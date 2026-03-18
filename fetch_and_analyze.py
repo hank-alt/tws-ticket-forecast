@@ -97,7 +97,7 @@ def parse_csv_response(r):
 def download_csv(url, file_id):
     """URL 직접 시도 → 실패시 files.info API로 재시도"""
     try:
-        r = requests.get(url, headers=HEADERS, timeout=30, allow_redirects=True)
+        r = requests.get(url, headers=HEADERS, params={"token": SLACK_TOKEN}, timeout=30, allow_redirects=True)
         rows = parse_csv_response(r)
         if rows:
             return rows
