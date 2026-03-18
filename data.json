@@ -1,8 +1,8 @@
 {
   "meta": {
-    "generated_at": "2026-03-18T09:59:32Z",
-    "latest_snap": "2026.03.18 17:49",
-    "n_snapshots": 241,
+    "generated_at": "2026-03-18T12:09:12Z",
+    "latest_snap": "2026.03.18 19:29",
+    "n_snapshots": 252,
     "current_total": 0,
     "total_cap": 1976
   },
@@ -18,17 +18,17 @@
       "isNew": false
     },
     {
+      "dt": "02/20 14:51",
+      "total": 0,
+      "isNew": false
+    },
+    {
       "dt": "02/20 15:00",
       "total": 0,
       "isNew": false
     },
     {
       "dt": "02/20 15:17",
-      "total": 0,
-      "isNew": false
-    },
-    {
-      "dt": "02/20 15:39",
       "total": 0,
       "isNew": false
     },
@@ -78,7 +78,17 @@
       "isNew": false
     },
     {
+      "dt": "02/21 12:49",
+      "total": 0,
+      "isNew": false
+    },
+    {
       "dt": "02/21 14:29",
+      "total": 0,
+      "isNew": false
+    },
+    {
+      "dt": "02/21 16:09",
       "total": 0,
       "isNew": false
     },
@@ -133,6 +143,11 @@
       "isNew": false
     },
     {
+      "dt": "02/22 19:29",
+      "total": 0,
+      "isNew": false
+    },
+    {
       "dt": "02/22 21:09",
       "total": 0,
       "isNew": false
@@ -154,6 +169,11 @@
     },
     {
       "dt": "02/23 12:49",
+      "total": 0,
+      "isNew": false
+    },
+    {
+      "dt": "02/23 14:29",
       "total": 0,
       "isNew": false
     },
@@ -278,16 +298,6 @@
       "isNew": false
     },
     {
-      "dt": "02/25 21:09",
-      "total": 0,
-      "isNew": false
-    },
-    {
-      "dt": "02/25 23:59",
-      "total": 0,
-      "isNew": false
-    },
-    {
       "dt": "02/26 09:29",
       "total": 0,
       "isNew": false
@@ -343,7 +353,12 @@
       "isNew": false
     },
     {
-      "dt": "02/27 12:49",
+      "dt": "02/27 14:29",
+      "total": 0,
+      "isNew": false
+    },
+    {
+      "dt": "02/27 15:16",
       "total": 0,
       "isNew": false
     },
@@ -379,6 +394,11 @@
     },
     {
       "dt": "02/28 11:09",
+      "total": 0,
+      "isNew": false
+    },
+    {
+      "dt": "02/28 12:49",
       "total": 0,
       "isNew": false
     },
@@ -428,6 +448,11 @@
       "isNew": false
     },
     {
+      "dt": "03/01 14:29",
+      "total": 0,
+      "isNew": false
+    },
+    {
       "dt": "03/01 16:09",
       "total": 0,
       "isNew": false
@@ -473,7 +498,17 @@
       "isNew": false
     },
     {
+      "dt": "03/02 17:49",
+      "total": 0,
+      "isNew": false
+    },
+    {
       "dt": "03/02 19:29",
+      "total": 0,
+      "isNew": false
+    },
+    {
+      "dt": "03/02 21:09",
       "total": 0,
       "isNew": false
     },
@@ -494,11 +529,6 @@
     },
     {
       "dt": "03/03 14:29",
-      "total": 0,
-      "isNew": false
-    },
-    {
-      "dt": "03/03 16:09",
       "total": 0,
       "isNew": false
     },
@@ -529,6 +559,11 @@
     },
     {
       "dt": "03/04 11:09",
+      "total": 0,
+      "isNew": false
+    },
+    {
+      "dt": "03/04 12:49",
       "total": 0,
       "isNew": false
     },
@@ -613,6 +648,11 @@
       "isNew": false
     },
     {
+      "dt": "03/05 19:29",
+      "total": 0,
+      "isNew": false
+    },
+    {
       "dt": "03/05 21:09",
       "total": 0,
       "isNew": false
@@ -629,11 +669,6 @@
     },
     {
       "dt": "03/05 23:43",
-      "total": 0,
-      "isNew": false
-    },
-    {
-      "dt": "03/05 23:59",
       "total": 0,
       "isNew": false
     },
@@ -783,7 +818,7 @@
       "isNew": false
     },
     {
-      "dt": "03/09 16:09",
+      "dt": "03/09 17:49",
       "total": 0,
       "isNew": false
     },
@@ -828,7 +863,7 @@
       "isNew": false
     },
     {
-      "dt": "03/10 17:49",
+      "dt": "03/10 19:29",
       "total": 0,
       "isNew": false
     },
@@ -839,6 +874,11 @@
     },
     {
       "dt": "03/10 23:59",
+      "total": 0,
+      "isNew": false
+    },
+    {
+      "dt": "03/11 09:29",
       "total": 0,
       "isNew": false
     },
@@ -864,6 +904,11 @@
     },
     {
       "dt": "03/11 14:29",
+      "total": 0,
+      "isNew": false
+    },
+    {
+      "dt": "03/11 14:30",
       "total": 0,
       "isNew": false
     },
@@ -899,6 +944,11 @@
     },
     {
       "dt": "03/12 16:09",
+      "total": 0,
+      "isNew": false
+    },
+    {
+      "dt": "03/12 17:49",
       "total": 0,
       "isNew": false
     },
@@ -969,11 +1019,6 @@
     },
     {
       "dt": "03/13 23:59",
-      "total": 0,
-      "isNew": false
-    },
-    {
-      "dt": "03/14 00:01",
       "total": 0,
       "isNew": false
     },
@@ -1063,11 +1108,6 @@
       "isNew": false
     },
     {
-      "dt": "03/15 19:29",
-      "total": 0,
-      "isNew": false
-    },
-    {
       "dt": "03/15 21:09",
       "total": 0,
       "isNew": false
@@ -1083,17 +1123,17 @@
       "isNew": false
     },
     {
-      "dt": "03/16 09:29",
-      "total": 0,
-      "isNew": false
-    },
-    {
       "dt": "03/16 09:34",
       "total": 0,
       "isNew": false
     },
     {
       "dt": "03/16 11:09",
+      "total": 0,
+      "isNew": false
+    },
+    {
+      "dt": "03/16 12:49",
       "total": 0,
       "isNew": false
     },
@@ -1153,6 +1193,11 @@
       "isNew": false
     },
     {
+      "dt": "03/17 14:29",
+      "total": 0,
+      "isNew": false
+    },
+    {
       "dt": "03/17 16:09",
       "total": 0,
       "isNew": false
@@ -1193,6 +1238,11 @@
       "isNew": false
     },
     {
+      "dt": "03/18 12:49",
+      "total": 0,
+      "isNew": false
+    },
+    {
       "dt": "03/18 14:20",
       "total": 0,
       "isNew": false
@@ -1209,6 +1259,11 @@
     },
     {
       "dt": "03/18 17:49",
+      "total": 0,
+      "isNew": false
+    },
+    {
+      "dt": "03/18 19:29",
       "total": 0,
       "isNew": false
     }
