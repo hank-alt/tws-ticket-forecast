@@ -4,7 +4,6 @@ from datetime import datetime
 
 SLACK_TOKEN  = os.environ["SLACK_TOKEN"]
 CHANNEL_ID   = os.environ.get("SLACK_CHANNEL_ID", "C0AFW1CECM9")
-HEADERS      = {"Authorization": f"Bearer {SLACK_TOKEN}"}
 OUTPUT_PATH  = "data.json"
 
 VEL_AT_NOW = 0.9204
@@ -24,17 +23,23 @@ def show_dt(date_str):
     except:
         return None
 
+def safe_int(val, default=0):
+    try:
+        return int(str(val).strip().replace(',', ''))
+    except:
+        return default
+
+# ── Slack에서 Full CSV 파일 목록 수집 ────────────────────────────────────────
 def fetch_csv_files():
     files = []
     cursor = None
     page = 0
     while True:
         page += 1
-        params = {"channel": CHANNEL_ID, "limit": 200}
+        params = {"channel": CHANNEL_ID, "limit": 200, "token": SLACK_TOKEN}
         if cursor:
             params["cursor"] = cursor
-        r = requests.get("https://slack.com/api/conversations.history",
-                         headers=HEADERS, params=params).json()
+        r = requests.get("https://slack.com/api/conversations.history", params=params).json()
         if not r.get("ok"):
             print(f"API error: {r.get('error')}")
             break
@@ -42,11 +47,9 @@ def fetch_csv_files():
             for f in msg.get("files", []):
                 name = f.get("name", "")
                 if "TicketReservation" in name and "Full" in name and name.endswith(".csv"):
-                    # url_private_download 우선, 없으면 url_private
-                    url = f.get("url_private_download") or f.get("url_private")
                     file_id = f.get("id", "")
-                    if url:
-                        files.append({"name": name, "url": url, "id": file_id})
+                    if file_id:
+                        files.append({"name": name, "id": file_id})
         cursor = r.get("response_metadata", {}).get("next_cursor")
         if not cursor or page > 20:
             break
@@ -62,93 +65,86 @@ def fetch_csv_files():
     print(f"Found {len(unique)} Full CSV files")
     return unique
 
+# ── files.info API로 CSV 내용 가져오기 ────────────────────────────────────────
 def download_csv_by_id(file_id):
-    """files.info API로 다운로드 URL 가져와서 시도"""
+    """files.info로 URL 가져와서 token 파라미터로 다운로드"""
     try:
+        # 1. files.info로 파일 정보 가져오기
         info = requests.get("https://slack.com/api/files.info",
-                            headers=HEADERS, params={"file": file_id}).json()
+                            params={"file": file_id, "token": SLACK_TOKEN}).json()
         if not info.get("ok"):
-            return None
-        url = info["file"].get("url_private_download") or info["file"].get("url_private")
-        if not url:
-            return None
-        r = requests.get(url, params={"t": SLACK_TOKEN}, timeout=30, allow_redirects=True)
-        return r
-    except Exception as e:
-        return None
+            return []
 
-def parse_csv_response(r):
-    """response -> rows 파싱"""
-    try:
-        if r.status_code != 200:
+        file_obj = info.get("file", {})
+
+        # 2. url_private_download에 token 파라미터 붙여서 다운로드
+        url = file_obj.get("url_private_download") or file_obj.get("url_private")
+        if not url:
             return []
-        content_type = r.headers.get("Content-Type", "")
-        if "html" in content_type or "<html" in r.text[:200].lower():
+
+        r = requests.get(url, params={"token": SLACK_TOKEN}, timeout=30, allow_redirects=True)
+
+        # HTML 응답이면 실패
+        if "text/html" in r.headers.get("Content-Type", ""):
             return []
+
         content = r.content.decode('utf-8-sig').strip()
-        if not content:
+        if not content or len(content) < 50:
             return []
+
         reader = csv.DictReader(io.StringIO(content))
         rows = [{k.strip(): v.strip() for k, v in row.items() if k} for row in reader]
         return rows
+
     except Exception as e:
         return []
 
-def download_csv(url, file_id):
-    """URL 직접 시도 → 실패시 files.info API로 재시도"""
-    try:
-        r = requests.get(url, headers=HEADERS, params={"token": SLACK_TOKEN}, timeout=30, allow_redirects=True)
-        rows = parse_csv_response(r)
-        if rows:
-            return rows
-    except:
-        pass
-    # 재시도: files.info API
-    if file_id:
-        r2 = download_csv_by_id(file_id)
-        if r2:
-            return parse_csv_response(r2)
-    return []
-
-def safe_int(val, default=0):
-    try:
-        return int(str(val).strip().replace(',', ''))
-    except:
-        return default
-
+# ── 분석 ─────────────────────────────────────────────────────────────────────
 def analyze(files_meta):
     if not files_meta:
         return None
 
-    # 첫 번째 파일 다운로드 테스트
+    # 테스트: 최신 파일 1개 먼저
     test = files_meta[-1]
-    print(f"Testing download: {test['name']}")
-    r_test = requests.get(test["url"], headers=HEADERS, timeout=30, allow_redirects=True)
-    print(f"  status: {r_test.status_code}")
-    print(f"  content-type: {r_test.headers.get('Content-Type','?')}")
-    print(f"  content preview: {r_test.text[:200]!r}")
+    print(f"Testing: {test['name']} (id={test['id']})")
+    test_rows = download_csv_by_id(test['id'])
+    print(f"  rows loaded: {len(test_rows)}")
+    if test_rows:
+        print(f"  columns: {list(test_rows[0].keys())}")
+        print(f"  sample: {dict(list(test_rows[0].items())[:3])}")
+    else:
+        print("  FAILED to download")
+        return None
 
+    # 전체 로드 (최근 50개만 — 추이 분석에 충분)
+    recent_files = files_meta[-50:]
     all_snapshots = []
-    for fm in files_meta:
-        rows = download_csv(fm["url"], fm.get("id",""))
+    for fm in recent_files:
+        rows = download_csv_by_id(fm["id"])
         if rows:
             m = re.search(r'(\d{8})_(\d{6})', fm["name"])
             if m:
                 sdt = datetime.strptime(m.group(1)+m.group(2), "%Y%m%d%H%M%S")
                 all_snapshots.append({"dt": sdt, "rows": rows})
 
+    # 전체 스냅샷도 추이용으로 메타만 수집
+    all_meta_snaps = []
+    for fm in files_meta:
+        m = re.search(r'(\d{8})_(\d{6})', fm["name"])
+        if m:
+            sdt = datetime.strptime(m.group(1)+m.group(2), "%Y%m%d%H%M%S")
+            all_meta_snaps.append(sdt)
+
     if not all_snapshots:
-        print("No snapshots loaded after all attempts!")
+        print("No snapshots loaded!")
         return None
 
-    print(f"Loaded {len(all_snapshots)} snapshots")
-    latest = all_snapshots[-1]
-    print(f"Latest: {latest['dt']}, rows: {len(latest['rows'])}")
-    if latest["rows"]:
-        print(f"Columns: {list(latest['rows'][0].keys())}")
-        print(f"Sample: {dict(list(latest['rows'][0].items())[:3])}")
+    print(f"Loaded {len(all_snapshots)} snapshots (of {len(files_meta)} total)")
 
-    # booking_open per show
+    latest = all_snapshots[-1]
+    latest_dt_str = latest["dt"].strftime("%Y.%m.%d %H:%M")
+
+    # booking_open
     first_seen = {}
     for snap in all_snapshots:
         for row in snap["rows"]:
@@ -156,13 +152,13 @@ def analyze(files_meta):
             if key not in first_seen or snap["dt"] < first_seen[key]:
                 first_seen[key] = snap["dt"]
 
-    latest_dt_str = latest["dt"].strftime("%Y.%m.%d %H:%M")
-
+    # 스냅샷 진행 추이 (최근 50개)
     snap_prog = []
     for snap in all_snapshots:
         total = sum(safe_int(r.get("# of Tickets Sold", 0)) for r in snap["rows"])
         snap_prog.append({"dt": snap["dt"].strftime("%m/%d %H:%M"), "total": total, "isNew": False})
 
+    # 1차 DoW benchmark
     cutoff_2cha = datetime(2026, 3, 1)
     g1_rows = [r for r in latest["rows"]
                if first_seen.get(f"{r.get('Date','')}_{ r.get('Start Time','')}", datetime(2099,1,1)) < cutoff_2cha]
@@ -178,11 +174,12 @@ def analyze(files_meta):
 
     dow_bench_live = {}
     for d in range(7):
-        if d in dow_sum and dow_cnt.get(d, 0) > 0:
+        if d in dow_sum and dow_cnt.get(d,0) > 0:
             dow_bench_live[d] = dow_sum[d] / dow_cnt[d]
         else:
             dow_bench_live[d] = DOW_BENCH[d]
 
+    # Past & future
     now_dt = latest["dt"].replace(hour=0, minute=0, second=0, microsecond=0)
     past_map, fut_map = {}, {}
     dow_labels = ["월","화","수","목","금","토","일"]
@@ -228,8 +225,9 @@ def analyze(files_meta):
 
     current_total = sum(pm["sold"] for pm in past_map.values()) + sum(fm["sold"] for fm in fut_map.values())
     total_cap     = sum(pm["cap"]  for pm in past_map.values()) + sum(fm["cap"]  for fm in fut_map.values())
-    print(f"current_total={current_total}, total_cap={total_cap}")
+    print(f"current_total={current_total:,}, total_cap={total_cap:,}")
 
+    # 히트맵
     hm_data = {}
     for r in latest["rows"]:
         sdt = show_dt(r.get("Date",""))
@@ -287,17 +285,17 @@ def analyze(files_meta):
     }
 
 if __name__ == "__main__":
-    print("Fetching CSV files from Slack...")
+    print("Fetching CSV file list from Slack...")
     files = fetch_csv_files()
     if not files:
         print("No files found, exiting.")
         exit(1)
-    print("Analyzing data...")
+    print("Analyzing...")
     data = analyze(files)
     if data:
         with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        print(f"✅ Saved — snapshots:{data['meta']['n_snapshots']}, total:{data['meta']['current_total']:,}")
+        print(f"✅ Saved — total:{data['meta']['current_total']:,}, cap:{data['meta']['total_cap']:,}")
     else:
         print("Analysis failed.")
         exit(1)
