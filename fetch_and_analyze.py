@@ -72,7 +72,7 @@ def download_csv_by_id(file_id):
         url = info["file"].get("url_private_download") or info["file"].get("url_private")
         if not url:
             return None
-        r = requests.get(url, headers=HEADERS, timeout=30, allow_redirects=True)
+        r = requests.get(url, params={"t": SLACK_TOKEN}, timeout=30, allow_redirects=True)
         return r
     except Exception as e:
         return None
