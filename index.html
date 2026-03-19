@@ -496,11 +496,13 @@ function loadFromLocalStorage() {
     if (!raw) return false;
     const saved = JSON.parse(raw);
     if (!saved || !saved.length) return false;
-    state.uploadedFiles = saved.map(f => ({
-      name: f.name,
-      dt: new Date(f.dt),
-      rows: f.rows
-    }));
+    state.uploadedFiles = saved
+      .filter(f => f && f.rows && Array.isArray(f.rows) && f.rows.length > 0)
+      .map(f => ({
+        name: f.name,
+        dt: new Date(f.dt),
+        rows: f.rows
+      }));
     console.log(`📂 불러오기 완료: ${saved.length}개 스냅샷`);
     return true;
   } catch(e) {
@@ -526,6 +528,7 @@ function analyzeUploaded() {
   // Build all rows with metadata
   const allRows = [];
   allSnaps.forEach(snap => {
+    if (!snap.rows || !Array.isArray(snap.rows)) return;
     snap.rows.forEach(row => {
       const showKey = `${row['Date']}_${row['Start Time']}`;
       const showDt = new Date(`${String(row['Date']).slice(0,4)}-${String(row['Date']).slice(4,6)}-${String(row['Date']).slice(6,8)}`);
