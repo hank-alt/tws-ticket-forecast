@@ -462,7 +462,7 @@ function analyzeUploaded() {
   Object.keys(dowSum).forEach(d => dowBench[d] = dowSum[d] / dowCount[d]);
 
   // Past daily
-  const cutoff2 = new Date('2026-03-18');
+  const cutoff2 = latestDt; // 업로드된 최신 스냅샷 날짜 기준으로 동적 설정
   const pastMap = {};
   const futMap = {};
   latestRows.forEach(r => {
@@ -492,17 +492,29 @@ function analyzeUploaded() {
     return { date: mm, dow: d.dow, shows: d.shows, curSold: d.curSold, cap: d.cap, daysLeft: d.daysLeft, bench, vi };
   });
 
-  // Update state
-  state.snapshots = snapProg;
-  state.futureShows = futureShows;
-  state.pastDaily = pastDaily;
+  // ── 핵심 변경: 기존 누적 스냅샷 보존 + 새 데이터로 예측만 갱신 ──────────────
+  // 1. 스냅샷 진행 추이: 기존 DEFAULT_SNAPSHOTS에 새 스냅샷 추가
+  const existingDts = new Set(DEFAULT_SNAPSHOTS.map(s => s.dt ? s.dt.slice(0,13) : s.label));
+  const newSnapPoints = snapProg.filter(s => !existingDts.has(s.dt.slice(0,13)));
+  const mergedSnapshots = [
+    ...DEFAULT_SNAPSHOTS,
+    ...newSnapPoints.map(s => ({...s, isNew: true}))
+  ];
+
+  // 2. 예측용 미래 공연 데이터: 새 CSV 기준으로 갱신
+  state.snapshots = mergedSnapshots;
+  state.futureShows = futureShows.length > 0 ? futureShows : state.futureShows;
+
+  // 3. 과거 일별: 새 CSV에 있으면 갱신, 없으면 기존 유지
+  state.pastDaily = pastDaily.length > 0 ? pastDaily : state.pastDaily;
   state.useUploaded = true;
 
   // Update file tags
   const uzFiles = document.getElementById('uz-files');
   uzFiles.innerHTML = allSnaps.map(s => `<div class="uz-file-tag">+${s.name.match(/\d{8}_\d{6}/)?.[0] || s.name}</div>`).join('');
-  document.getElementById('snap-status').textContent = `● ${allSnaps.length}개 스냅샷 (업로드됨)`;
-  document.getElementById('snap-count-sub').textContent = `업로드된 ${allSnaps.length}개 스냅샷 기준 · 자동 분석 완료`;
+  const latestSnapLabel = allSnaps[allSnaps.length-1]?.dt?.toLocaleString('ko-KR', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) || '';
+  document.getElementById('snap-status').textContent = `● ${mergedSnapshots.length}개 스냅샷 (기존+신규)`;
+  document.getElementById('snap-count-sub').textContent = `기존 ${DEFAULT_SNAPSHOTS.length}개 + 신규 ${newSnapPoints.length}개 = 총 ${mergedSnapshots.length}개 스냅샷 · 최신: ${latestSnapLabel}`;
 
   renderAll();
 }
