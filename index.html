@@ -163,6 +163,14 @@ canvas{max-width:100%}
     <div class="uz-sub">TWS_Korea_TicketReservation_YYYYMMDD_HHMMSS_Full.csv · 여러 파일 동시 가능</div>
   </div>
   <div class="uz-files" id="uz-files"></div>
+  <button onclick="clearLocalStorage()" style="
+    margin-left:8px;flex-shrink:0;
+    font-family:var(--mono);font-size:9px;letter-spacing:1px;
+    padding:6px 10px;border-radius:6px;
+    border:1px solid rgba(255,255,255,0.1);
+    background:transparent;color:rgba(229,224,216,0.3);
+    cursor:pointer;white-space:nowrap;
+    " title="저장된 누적 데이터 초기화">초기화</button>
 </div>
 
 <!-- KPIs -->
@@ -369,6 +377,56 @@ const VEL_2CHA_EXT = [{d:8,v:.995},{d:10,v:.999},{d:14,v:1},{d:20,v:1}];
 /* ═══════════════════════════════════════════════════════════════
    STATE
 ═══════════════════════════════════════════════════════════════ */
+// ── localStorage 누적 저장 ───────────────────────────────────────────────────
+const STORAGE_KEY = 'tws_forecast_snapshots_v1';
+
+function saveToStorage(uploadedSnaps) {
+  try {
+    // 스냅샷 메타데이터만 저장 (rows 제외 — 용량 절약)
+    const toSave = uploadedSnaps.map(s => ({
+      name: s.name,
+      key: s.key,
+      dt: s.dt.toISOString(),
+      total: s.rows ? s.rows.reduce((sum, r) => sum + (parseInt(r['# of Tickets Sold']) || 0), 0) : 0,
+      // 최신 스냅샷 rows만 저장 (예측용)
+      rows: s === uploadedSnaps[uploadedSnaps.length - 1] ? s.rows : null
+    }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+    console.log(`💾 Saved ${toSave.length} snapshots to localStorage`);
+  } catch(e) {
+    console.warn('localStorage save failed:', e);
+  }
+}
+
+function loadFromStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const saved = JSON.parse(raw);
+    return saved.map(s => ({
+      ...s,
+      dt: new Date(s.dt),
+      rows: s.rows || []
+    }));
+  } catch(e) {
+    console.warn('localStorage load failed:', e);
+    return null;
+  }
+}
+
+function clearStorage() {
+  localStorage.removeItem(STORAGE_KEY);
+  state.uploadedFiles = [];
+  state.snapshots = DEFAULT_SNAPSHOTS;
+  state.futureShows = DEFAULT_FUTURE_SHOWS;
+  state.pastDaily = DEFAULT_PAST_DAILY;
+  state.useUploaded = false;
+  renderAll();
+  document.getElementById('uz-files').innerHTML = '';
+  document.getElementById('snap-status').textContent = '● 기본 데이터 20개 스냅샷';
+  alert('저장된 스냅샷이 초기화되었습니다.');
+}
+
 let state = {
   snapshots: DEFAULT_SNAPSHOTS,
   futureShows: DEFAULT_FUTURE_SHOWS,
@@ -408,8 +466,57 @@ function handleFiles(files) {
     state.uploadedFiles = [...state.uploadedFiles, ...valid]
       .sort((a,b) => a.dt - b.dt)
       .filter((v,i,arr) => arr.findIndex(x => x.dt.getTime() === v.dt.getTime()) === i);
+    saveToLocalStorage();
     analyzeUploaded();
   });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LOCAL STORAGE — 브라우저에 누적 저장 (새로고침해도 유지)
+═══════════════════════════════════════════════════════════════ */
+const LS_KEY = 'tws_forecast_snapshots_v1';
+
+function saveToLocalStorage() {
+  try {
+    const toSave = state.uploadedFiles.map(f => ({
+      name: f.name,
+      dt: f.dt.toISOString(),
+      rows: f.rows
+    }));
+    localStorage.setItem(LS_KEY, JSON.stringify(toSave));
+    console.log(`💾 저장 완료: ${toSave.length}개 스냅샷`);
+  } catch(e) {
+    console.warn('localStorage 저장 실패:', e);
+  }
+}
+
+function loadFromLocalStorage() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return false;
+    const saved = JSON.parse(raw);
+    if (!saved || !saved.length) return false;
+    state.uploadedFiles = saved.map(f => ({
+      name: f.name,
+      dt: new Date(f.dt),
+      rows: f.rows
+    }));
+    console.log(`📂 불러오기 완료: ${saved.length}개 스냅샷`);
+    return true;
+  } catch(e) {
+    console.warn('localStorage 불러오기 실패:', e);
+    return false;
+  }
+}
+
+function clearLocalStorage() {
+  localStorage.removeItem(LS_KEY);
+  state.uploadedFiles = [];
+  state.useUploaded = false;
+  renderAll();
+  document.getElementById('uz-files').innerHTML = '';
+  document.getElementById('snap-status').textContent = '● 기본 데이터 20개 스냅샷';
+  alert('저장된 데이터가 초기화되었습니다.');
 }
 
 function analyzeUploaded() {
@@ -509,12 +616,15 @@ function analyzeUploaded() {
   state.pastDaily = pastDaily.length > 0 ? pastDaily : state.pastDaily;
   state.useUploaded = true;
 
+  // localStorage에 누적 저장
+  saveToStorage(state.uploadedFiles);
+
   // Update file tags
   const uzFiles = document.getElementById('uz-files');
   uzFiles.innerHTML = allSnaps.map(s => `<div class="uz-file-tag">+${s.name.match(/\d{8}_\d{6}/)?.[0] || s.name}</div>`).join('');
   const latestSnapLabel = allSnaps[allSnaps.length-1]?.dt?.toLocaleString('ko-KR', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) || '';
-  document.getElementById('snap-status').textContent = `● ${mergedSnapshots.length}개 스냅샷 (기존+신규)`;
-  document.getElementById('snap-count-sub').textContent = `기존 ${DEFAULT_SNAPSHOTS.length}개 + 신규 ${newSnapPoints.length}개 = 총 ${mergedSnapshots.length}개 스냅샷 · 최신: ${latestSnapLabel}`;
+  document.getElementById('snap-status').textContent = `● ${mergedSnapshots.length}개 스냅샷 (누적 저장됨)`;
+  document.getElementById('snap-count-sub').textContent = `기본 ${DEFAULT_SNAPSHOTS.length}개 + 추가 ${newSnapPoints.length}개 = 총 ${mergedSnapshots.length}개 · 브라우저에 저장됨 (새로고침해도 유지)`;
 
   renderAll();
 }
@@ -1180,8 +1290,16 @@ renderAll = function() {
 
 // Init
 document.addEventListener('DOMContentLoaded', async () => {
+  // 1. data.json 시도 (GitHub Actions 연동)
   await tryLoadDataJson();
-  renderAll();
+
+  // 2. localStorage에서 누적 데이터 불러오기
+  const hasLocal = loadFromLocalStorage();
+  if (hasLocal) {
+    analyzeUploaded();
+  } else {
+    renderAll();
+  }
 
   // 30분마다 자동 갱신
   setInterval(async () => {
