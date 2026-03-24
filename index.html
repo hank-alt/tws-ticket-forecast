@@ -696,9 +696,10 @@ function renderKPIs(preds) {
   const pastSoldActual = state.pastDaily.length > 0
     ? state.pastDaily.reduce((s,d) => s + (d.sold||0), 0)
     : (PAST1_TOTAL + PAST2_TOTAL);
+  const futCurSoldKpi = state.futureShows.reduce((s,sh) => s + (sh.curSold||0), 0);
   const grand = pastSoldActual + futTotal;
   const occ = ((grand / TOTAL_CAP) * 100).toFixed(1);
-  const current = state.snapshots[state.snapshots.length - 1]?.total || 28350;
+  const current = pastSoldActual + futCurSoldKpi; // 과거확정 + 미래기예매
   const curOcc = ((current / TOTAL_CAP) * 100).toFixed(1);
 
   document.getElementById('krow').innerHTML = [
@@ -712,21 +713,33 @@ function renderKPIs(preds) {
 }
 
 function renderBanner(preds) {
-  const futTotal = preds.reduce((s,p) => s + p.predSold, 0);
-  const pastSoldActual2 = state.pastDaily.length > 0
+  const pastSold = state.pastDaily.length > 0
     ? state.pastDaily.reduce((s,d) => s + (d.sold||0), 0)
     : (PAST1_TOTAL + PAST2_TOTAL);
-  const grand = pastSoldActual2 + futTotal;
+
+  // 미래 공연: 현재 예매된 것 vs 앞으로 추가될 것 분리
+  const futCurSold = state.futureShows.reduce((s,sh) => s + (sh.curSold||0), 0);
+  const futPredTotal = preds.reduce((s,p) => s + p.predSold, 0);
+  const futAdditional = futPredTotal - futCurSold;
+
+  const grand = pastSold + futPredTotal;
   const occ = ((grand / TOTAL_CAP) * 100).toFixed(1);
+
   document.getElementById('pban').innerHTML = `
     <div class="pban">
       <div class="pbm"><div class="pbnum">${grand.toLocaleString()}</div><div class="pblb">4월 12일 최종 예측 판매량</div></div>
       <div class="pbdiv"></div>
       <div class="pbbd">
         ${[
-           ['#ffb932', '현재 확정 판매', pastSoldActual2.toLocaleString() + ' 장'],
-           ['#4ade80', '미래 공연 예측', futTotal.toLocaleString() + ' 장'],
+           ['#ffb932', '상영 완료 확정',   pastSold.toLocaleString() + ' 장'],
+           ['#fb923c', '미래 공연 기예매',  futCurSold.toLocaleString() + ' 장'],
+           ['#4ade80', '추가 예측 판매',    Math.max(futAdditional,0).toLocaleString() + ' 장'],
          ].map(([c,l,v]) => `<div class="pbr"><div class="pbdot" style="background:${c}"></div><span style="color:var(--text2);min-width:120px">${l}</span><span style="font-family:var(--mono);font-size:11.5px">${v}</span></div>`).join('')}
+        <div class="pbr" style="border-top:1px solid rgba(255,185,50,0.15);padding-top:7px;margin-top:3px">
+          <div class="pbdot" style="background:rgba(255,255,255,0.2)"></div>
+          <span style="color:var(--text2);min-width:120px">합계</span>
+          <span style="font-family:var(--mono);font-size:11.5px;color:var(--gold)">${grand.toLocaleString()} 장</span>
+        </div>
       </div>
       <div class="pbocc"><div class="pboccn">${occ}%</div><div class="pboccl">예측 점유율</div></div>
     </div>`;
