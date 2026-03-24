@@ -585,31 +585,51 @@ function analyzeUploaded() {
 /* ═══════════════════════════════════════════════════════════════
    PREDICTION ENGINE
 ═══════════════════════════════════════════════════════════════ */
+// 개막일 기준 주차 계산 (3/4 = 1주차)
+const OPENING_DATE = new Date('2026-03-04');
+function getShowWeek(daysLeft) {
+  // 오늘 날짜 + daysLeft = 공연날짜, 개막일 기준 몇 주차?
+  const today = new Date();
+  const showDate = new Date(today.getTime() + daysLeft * 86400000);
+  const daysSinceOpen = Math.floor((showDate - OPENING_DATE) / 86400000);
+  return Math.floor(daysSinceOpen / 7) + 1; // 1~6주차
+}
+
+// 주차별 평일 decay 계수 (실제 데이터 기반)
+// 주말(금·토·일)은 decay 없음, 평일(월~목·수)만 적용
+const WEEKDAY_DECAY = {1:1.00, 2:0.85, 3:0.75, 4:0.65, 5:0.55, 6:0.45};
+
 function predictShow(show, wNear, wMid, wFar, viralStr) {
   const co  = show.curSold / show.cap;
-  const bm  = show.bench;
+  const dow = show.dow; // 0=Mon~6=Sun
   const d   = show.daysLeft;
-  const WE_BENCH = 0.992; // 주말 평균 벤치마크 (토99%+일99.5% 평균)
+  const WE_BENCH = 0.992;
 
-  // 현재 판매가 이미 벤치마크 이상이면 그대로
-  if (co >= bm) return Math.min(co * 1.003, 1.0);
+  // 주말(금4·토5·일6) vs 평일 구분
+  const isWeekend = [4, 5, 6].includes(dow);
+
+  // 실효 벤치마크: 평일은 주차별 decay 적용
+  let effectiveBm = show.bench;
+  if (!isWeekend && d > 7) {
+    const week = getShowWeek(d);
+    const decay = WEEKDAY_DECAY[Math.min(week, 6)] || 0.45;
+    effectiveBm = show.bench * decay;
+  }
+
+  // 현재 판매가 이미 실효 벤치마크 이상이면 그대로
+  if (co >= effectiveBm) return Math.min(co * 1.003, 1.0);
 
   let pred;
   if (d <= 3) {
-    // 러시 거의 완료 — 현재 판매 중심
-    pred = co * (wNear/100) + bm * (1 - wNear/100);
+    pred = co * (wNear/100) + effectiveBm * (1 - wNear/100);
   } else if (d <= 7) {
-    // 러시 진행 중 — 절충
-    pred = co * (wMid/100) + bm * (1 - wMid/100);
+    pred = co * (wMid/100) + effectiveBm * (1 - wMid/100);
   } else if (d <= 14) {
-    // 러시 전 — 벤치마크 중심
-    pred = co * (wFar/100) + bm * (1 - wFar/100);
+    pred = co * (wFar/100) + effectiveBm * (1 - wFar/100);
   } else {
-    // 수요 미발현 — 바이럴/재관람이 평일을 주말 방향으로 끌어올림
-    // pred = bm + (WE_BENCH - bm) × viralStr%
-    // 주말은 이미 WE_BENCH에 가까워 효과 미미, 평일은 의미 있게 상승
-    const boost = (WE_BENCH - bm) * (viralStr / 100);
-    pred = bm + boost;
+    // D-15 이상: 바이럴/재관람이 평일을 주말 방향으로 끌어올림
+    const boost = (WE_BENCH - effectiveBm) * (viralStr / 100);
+    pred = effectiveBm + boost;
   }
 
   return Math.min(Math.max(pred, co), 1.0);
