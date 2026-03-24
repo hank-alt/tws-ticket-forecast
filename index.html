@@ -398,14 +398,14 @@ function saveToStorage(uploadedSnaps) {
       rows: s.rows || []
     }));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-    console.log(\`💾 저장 완료: \${toSave.length}개 스냅샷 (브라우저에 누적 보관)\`);
+    console.log(`💾 저장 완료: ${toSave.length}개 스냅샷 (브라우저에 누적 보관)`);
   } catch(e) {
     // 용량 초과 시 최근 20개만 저장
     try {
       const recent = uploadedSnaps.slice(-20);
       const toSave = recent.map(s => ({ name: s.name, key: s.key, dt: s.dt.toISOString(), rows: s.rows || [] }));
       localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-      console.warn(\`⚠️ 용량 초과로 최근 20개만 저장\`);
+      console.warn(`⚠️ 용량 초과로 최근 20개만 저장`);
     } catch(e2) {
       console.warn('localStorage 저장 실패:', e2);
     }
@@ -1279,7 +1279,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const savedSnaps = loadFromStorage();
   if (savedSnaps && savedSnaps.length > 0) {
     state.uploadedFiles = savedSnaps;
-    console.log(\`📂 \${savedSnaps.length}개 스냅샷 복원\`);
+    console.log(`📂 ${savedSnaps.length}개 스냅샷 복원`);
     analyzeUploaded();
   } else {
     renderAll();
