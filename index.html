@@ -200,7 +200,10 @@ canvas{max-width:100%}
       <div class="prow"><span class="plb">D-4~7 현재판매 비중</span><input type="range" class="psl" id="wM" min="20" max="80" value="50" oninput="updateModel()"><span class="pv" id="wMv">50%</span></div>
       <div class="prow"><span class="plb">D-8~14 현재판매 비중</span><input type="range" class="psl" id="wF" min="0" max="50" value="20" oninput="updateModel()"><span class="pv" id="wFv">20%</span></div>
       <div class="prow"><span class="plb">바이럴/재관람 기대치</span><input type="range" class="psl" id="wViral" min="0" max="30" value="10" oninput="updateModel()"><span class="pv" id="wViralv">10%</span></div>
-      <div class="note">* 현재판매 비중: 높을수록 현재 예매량을 신뢰, 낮을수록 요일 벤치마크를 신뢰<br>* 바이럴/재관람: D-15 이상 공연에 추가 uplift (재관람 15~20% + 소셜 바이럴)</div>
+      <div class="note">* 현재판매 비중: 높을수록 현재 예매량 신뢰, 낮을수록 요일 벤치마크 신뢰<br>
+      * 바이럴/재관람 강도: D-15+ 공연에서 평일 벤치마크를 주말 수준으로 끌어올리는 효과<br>
+      &nbsp;&nbsp;0% = 벤치마크 그대로 / 30% = 평일이 주말-벤치마크 차이의 30% 만큼 상승<br>
+      &nbsp;&nbsp;(재관람 경험상 15~20% → 슬라이더 15~20% 권장)</div>
     </div>
     <div class="mc">
       <div class="mtitle">요일별 벤치마크 (1차 109회 기준)</div>
@@ -582,10 +585,11 @@ function analyzeUploaded() {
 /* ═══════════════════════════════════════════════════════════════
    PREDICTION ENGINE
 ═══════════════════════════════════════════════════════════════ */
-function predictShow(show, wNear, wMid, wFar, viralBoost) {
+function predictShow(show, wNear, wMid, wFar, viralStr) {
   const co  = show.curSold / show.cap;
   const bm  = show.bench;
   const d   = show.daysLeft;
+  const WE_BENCH = 0.992; // 주말 평균 벤치마크 (토99%+일99.5% 평균)
 
   // 현재 판매가 이미 벤치마크 이상이면 그대로
   if (co >= bm) return Math.min(co * 1.003, 1.0);
@@ -601,12 +605,13 @@ function predictShow(show, wNear, wMid, wFar, viralBoost) {
     // 러시 전 — 벤치마크 중심
     pred = co * (wFar/100) + bm * (1 - wFar/100);
   } else {
-    // 수요 아직 미발현 — 벤치마크 + 바이럴/재관람 보정
-    const viral = (viralBoost || 0) / 100;
-    pred = bm * (1 + viral);
+    // 수요 미발현 — 바이럴/재관람이 평일을 주말 방향으로 끌어올림
+    // pred = bm + (WE_BENCH - bm) × viralStr%
+    // 주말은 이미 WE_BENCH에 가까워 효과 미미, 평일은 의미 있게 상승
+    const boost = (WE_BENCH - bm) * (viralStr / 100);
+    pred = bm + boost;
   }
 
-  // 예측은 항상 현재 판매 이상, 최대 수용인원 이하
   return Math.min(Math.max(pred, co), 1.0);
 }
 
@@ -623,38 +628,47 @@ function computePreds() {
 }
 
 function computeScenarios(basePreds) {
-  const wN = +document.getElementById('wN').value;
-  const wM = +document.getElementById('wM').value;
-  const wF = +document.getElementById('wF').value;
-  const base = PAST1_TOTAL + PAST2_TOTAL + basePreds.reduce((s,p) => s + p.predSold, 0);
-  
-  // Uncertainty is mainly in far shows (daysLeft >= 14)
-  const nearShows = state.futureShows.filter(s => s.daysLeft < 14);
-  const farShows  = state.futureShows.filter(s => s.daysLeft >= 14);
-  
-  const nearBase = nearShows.reduce((s,sh) => {
-    const po = predictShow(sh, wN, wM, wF);
-    return s + Math.round(po * sh.cap);
-  }, 0);
-  const farBase = farShows.reduce((s,sh) => {
-    const po = predictShow(sh, wN, wM, wF);
-    return s + Math.round(po * sh.cap);
-  }, 0);
+  const wN    = +document.getElementById('wN').value;
+  const wM    = +document.getElementById('wM').value;
+  const wF    = +document.getElementById('wF').value;
+  const viral = +document.getElementById('wViral').value;
 
+  // 과거 확정 판매
+  const pastSold = state.pastDaily.length > 0
+    ? state.pastDaily.reduce((s,d) => s + (d.sold||0), 0)
+    : (PAST1_TOTAL + PAST2_TOTAL);
+
+  // 근접 공연 (D-14 이내): 이미 러시 진행 중 → 불확실성 낮음
+  const nearShows = state.futureShows.filter(s => s.daysLeft < 14);
+  const nearTotal = nearShows.reduce((s,sh) => s + Math.max(Math.round(predictShow(sh,wN,wM,wF,viral)*sh.cap), sh.curSold), 0);
+
+  // 원거리 공연 (D-14 이상): 수요 미발현 → 불확실성 높음
+  const farShows = state.futureShows.filter(s => s.daysLeft >= 14);
+
+  // 시나리오별로 원거리 공연에 다른 바이럴 강도 적용
   const scenarios = [
-    { name:"최악", pct:-25, prob:0.05, color:"#f87171", desc:"4월 원거리 공연 현저히 부진" },
-    { name:"비관", pct:-13, prob:0.10, color:"#fb923c", desc:"4월 공연 벤치마크 65% 수준" },
-    { name:"보수", pct:-7,  prob:0.18, color:"#fbbf24", desc:"4월 공연 벤치마크 75% 수준" },
-    { name:"기본", pct:0,   prob:0.29, color:"#ffb932", desc:"요일 벤치마크 기준 예측" },
-    { name:"낙관", pct:+6,  prob:0.21, color:"#86efac", desc:"4월 공연 판매 가속 (+15%)" },
-    { name:"강세", pct:+12, prob:0.11, color:"#4ade80", desc:"대부분 공연 벤치마크 근접" },
-    { name:"최강", pct:+22, prob:0.06, color:"#22d3ee", desc:"전 공연 거의 완판 수준" },
+    { name:"최악",  viral:0,   wkdAdj:-0.15, prob:0.05, color:"#f87171", desc:"바이럴 없음 + 평일 수요 부진" },
+    { name:"비관",  viral:0,   wkdAdj:-0.05, prob:0.10, color:"#fb923c", desc:"바이럴 없음, 벤치마크 소폭 하회" },
+    { name:"보수",  viral:5,   wkdAdj:0,     prob:0.18, color:"#fbbf24", desc:"소폭 바이럴, 벤치마크 수준" },
+    { name:"기본",  viral:viral,wkdAdj:0,    prob:0.27, color:"#ffb932", desc:"현재 슬라이더 설정값 그대로" },
+    { name:"낙관",  viral:15,  wkdAdj:0,     prob:0.22, color:"#86efac", desc:"재관람 15% + 소셜 바이럴" },
+    { name:"강세",  viral:25,  wkdAdj:0,     prob:0.12, color:"#4ade80", desc:"재관람 20% + 강한 바이럴" },
+    { name:"최강",  viral:40,  wkdAdj:0.05,  prob:0.06, color:"#22d3ee", desc:"전 공연 거의 완판, 연장 고려" },
   ];
 
-  return scenarios.map(s => ({
-    ...s,
-    total: Math.round(base * (1 + s.pct / 100)),
-  }));
+  return scenarios.map(sc => {
+    const farTotal = farShows.reduce((s, sh) => {
+      // 요일별 조정 벤치마크
+      const adjBench = Math.min(sh.bench + sc.wkdAdj, 1.0);
+      const adjShow = { ...sh, bench: adjBench };
+      const po = predictShow(adjShow, wN, wM, wF, sc.viral);
+      return s + Math.max(Math.round(po * sh.cap), sh.curSold);
+    }, 0);
+    return {
+      ...sc,
+      total: pastSold + nearTotal + farTotal,
+    };
+  });
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -737,9 +751,9 @@ function renderProbSection(preds) {
   }).join('');
 
   document.getElementById('prob-note').innerHTML = `
-    * 핵심 불확실성: 4/1~4/12 원거리 공연 (현재 1~18% 점유 → 모델 예측 40~96%)<br>
-    * 기본 시나리오(29%): 요일 벤치마크 + 임박도 혼합 적용<br>
-    * 낙관 이상(38%): 4월 판매 가속 또는 SNS 바이럴 발생 시`;
+    * 핵심 불확실성: D-14 이상 공연 — 재관람/바이럴 수요 발현 시점 미확정<br>
+    * 기본(27%): 현재 슬라이더 설정값 그대로 적용<br>
+    * 낙관 이상(40%): 재관람 15%+ 또는 소셜 바이럴 발생 시`;
 
   // Cumulative prob chart
   const cumData = [];
