@@ -354,7 +354,7 @@ const DOW_BENCH = {0:0.8713,1:0.7081,2:0.8588,3:0.8631,4:0.9610,5:0.9893,6:0.995
 const DOW_STD   = {0:0.1979,1:0.3121,2:0.2633,3:0.2526,4:0.1250,5:0.0247,6:0.0061};
 const DOW_NAMES = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 // Velocity 모델 제거 — DoW 벤치마크 기반 모델로 전환
-const PAST1_TOTAL = 14362, PAST2_TOTAL = 455, TOTAL_CAP = 49400;
+const PAST1_TOTAL = 14362, PAST2_TOTAL = 455, TOTAL_CAP = 49400; // fallback: CSV 없을 때만 사용
 
 const VEL_1CHA = [{d:0,v:.549},{d:2.1,v:.635},{d:2.9,v:.642},{d:3.9,v:.655},{d:9.8,v:.664},
   {d:10.9,v:.668},{d:12.1,v:.684},{d:14.1,v:.748},{d:16.7,v:.821},{d:17.7,v:.863},
@@ -731,10 +731,10 @@ function renderBanner(preds) {
       <div class="pbm"><div class="pbnum">${grand.toLocaleString()}</div><div class="pblb">4월 12일 최종 예측 판매량</div></div>
       <div class="pbdiv"></div>
       <div class="pbbd">
-        ${[['#ffb932','1차 예매 확정',PAST1_TOTAL.toLocaleString()+' 장'],
-           ['#fb923c','2차 완료 회차',PAST2_TOTAL.toLocaleString()+' 장'],
-           ['#4ade80','2차 미래 예측',futTotal.toLocaleString()+' 장']]
-          .map(([c,l,v]) => `<div class="pbr"><div class="pbdot" style="background:${c}"></div><span style="color:var(--text2);min-width:110px">${l}</span><span style="font-family:var(--mono);font-size:11.5px">${v}</span></div>`).join('')}
+        ${[
+           ['#ffb932', '현재 확정 판매', pastSoldActual2.toLocaleString() + ' 장'],
+           ['#4ade80', '미래 공연 예측', futTotal.toLocaleString() + ' 장'],
+         ].map(([c,l,v]) => `<div class="pbr"><div class="pbdot" style="background:${c}"></div><span style="color:var(--text2);min-width:120px">${l}</span><span style="font-family:var(--mono);font-size:11.5px">${v}</span></div>`).join('')}
       </div>
       <div class="pbocc"><div class="pboccn">${occ}%</div><div class="pboccl">예측 점유율</div></div>
     </div>`;
@@ -752,14 +752,14 @@ function renderBenchmarks() {
 function renderProbSection(preds) {
   const scens = computeScenarios(preds);
   const maxProb = Math.max(...scens.map(s => s.prob));
-  const base = scens.find(s => s.pct === 0);
+  const base = scens.find(s => s.name === '기본');
 
   // Probability bars
   document.getElementById('prob-bars').innerHTML = scens.map(s => {
     const width = (s.prob / maxProb * 100).toFixed(1);
-    const isBase = s.pct === 0;
+    const isBase = s.name === '기본';
     return `<div class="prob-row ${isBase ? 'range-highlight' : ''}" style="${isBase?'padding:4px 6px;':''}">
-      <div class="prob-label">${s.name} ${s.pct >= 0 ? '+' : ''}${s.pct}%</div>
+      <div class="prob-label">${s.name}</div>
       <div class="prob-track" style="height:26px">
         <div class="prob-fill" style="width:${width}%;background:${s.color}20;border-right:2px solid ${s.color}" data-pct="${Math.round(s.prob*100)}%">
           <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-family:var(--mono);font-size:10px;color:${s.color}">${s.total.toLocaleString()}</span>
@@ -826,7 +826,7 @@ function renderProbSection(preds) {
           backgroundColor: '#181b28', borderColor: 'rgba(255,185,50,0.2)', borderWidth: 1,
           titleColor: '#ffb932', titleFont: { family: 'DM Mono', size: 10 },
           bodyColor: '#e5e0d8', bodyFont: { family: 'DM Mono', size: 11 },
-          callbacks: { title: items => items[0].raw.x.toLocaleString()+'장', label: items => `누적 달성확률: ${items.raw.y}%` }
+          callbacks: { title: items => items[0].raw.x.toLocaleString()+'장', label: items => '누적 달성확률: ' + items.raw.y + '%' }
         }
       }
     }
@@ -836,7 +836,7 @@ function renderProbSection(preds) {
   const p10 = scens[0].total, p90 = scens[scens.length-1].total;
   const mean = Math.round(scens.reduce((s,sc) => s + sc.total * sc.prob, 0));
   document.getElementById('prob-stats').innerHTML =
-    `P10 구간: ${p10.toLocaleString()}장 | P90 구간: ${p90.toLocaleString()}장<br>확률 가중 평균: ${mean.toLocaleString()}장 | 불확실성 폭: ${(p90-p10).toLocaleString()}장`;
+    'P10 구간: ' + p10.toLocaleString() + '장 | P90 구간: ' + p90.toLocaleString() + '장<br>확률 가중 평균: ' + mean.toLocaleString() + '장 | 불확실성 폭: ' + (p90-p10).toLocaleString() + '장';
 }
 
 function renderSnapChart() {
@@ -1126,7 +1126,19 @@ function renderHeatmap(data, dowAvg, slotAvg) {
     </div>`;
   }
 
-  // Footer: slot averages label row
+  // Footer: slot averages label row + TOTAL intersection
+  // 전체 합계 계산
+  let totalSold = 0, totalSeats = 0, totalShows = 0;
+  for (let d=0; d<7; d++) {
+    const dData = data[d] || {};
+    for (let s=1; s<=maxSlots; s++) {
+      const cell = dData[s];
+      if (cell) { totalSold += cell.sold; totalSeats += cell.seats; totalShows += cell.n; }
+    }
+  }
+  const totalOcc = totalSeats > 0 ? totalSold / totalSeats : 0;
+  const totalAvgRem = totalSeats > 0 ? Math.round((totalSeats - totalSold) / totalShows) : 0;
+
   html += `<div style="font-size:9px;color:var(--text3);display:flex;align-items:center;justify-content:flex-end;padding-right:10px;padding-top:4px">회차 평균</div>`;
   for (let s=1; s<=maxSlots; s++) {
     const sa = slotAvg[s];
@@ -1136,7 +1148,15 @@ function renderHeatmap(data, dowAvg, slotAvg) {
       ${sa ? `<div style="font-weight:600">${(sa.occ*100).toFixed(1)}%</div><div style="font-size:9px;opacity:0.75">(${sa.avgRemaining}석)</div>` : '-'}
     </div>`;
   }
-  html += `<div></div>`;
+  // TOTAL 셀 — 가로합×세로합 교차점
+  const totalBg = occToColor(totalOcc);
+  const totalTc = textColor(totalOcc);
+  html += `<div style="background:${totalBg};border-radius:5px;padding:6px 4px;text-align:center;font-size:10px;color:${totalTc};border:2px solid rgba(255,255,255,0.2)">
+    <div style="font-size:8px;opacity:0.7;margin-bottom:2px">TOTAL</div>
+    <div style="font-weight:700;font-size:12px">${(totalOcc*100).toFixed(1)}%</div>
+    <div style="font-size:9px;opacity:0.75">${totalSold.toLocaleString()}석</div>
+    <div style="font-size:8px;opacity:0.6">/ ${totalSeats.toLocaleString()}</div>
+  </div>`;
 
   html += '</div>';
   document.getElementById('heatmap-container').innerHTML = html;
