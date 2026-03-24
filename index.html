@@ -188,22 +188,6 @@ canvas{max-width:100%}
   </div>
 </div>
 
-<!-- VELOCITY -->
-<div class="sec">
-  <div class="stitle">예매 속도 곡선 (로지스틱 모델)</div>
-  <div class="ssub">예매 오픈 후 경과일 → 최종 판매량 대비 누적 비율 | 2차: 7일 관측 + 외삽(점선)</div>
-  <div class="vgrid">
-    <div class="cw">
-      <div style="font-family:var(--mono);font-size:10px;color:var(--gold);margin-bottom:10px;letter-spacing:1px">1차 예매 (25일 전체 관측)</div>
-      <div class="chart-box-sm"><canvas id="vel1Chart"></canvas></div>
-    </div>
-    <div class="cw">
-      <div style="font-family:var(--mono);font-size:10px;color:var(--green);margin-bottom:10px;letter-spacing:1px">2차 예매 (7일 관측 ● + 외삽 ○)</div>
-      <div class="chart-box-sm"><canvas id="vel2Chart"></canvas></div>
-    </div>
-  </div>
-</div>
-
 <!-- MODEL + PREDICTION -->
 <div class="sec">
   <div class="stitle">예측 파라미터 & 최종 예측</div>
@@ -211,11 +195,12 @@ canvas{max-width:100%}
   <div id="pban"></div>
   <div class="mgrid">
     <div class="mc">
-      <div class="mtitle">속도곡선 가중치 (vs 요일 벤치마크)</div>
-      <div class="prow"><span class="plb">D-0~3 (극초근접)</span><input type="range" class="psl" id="wN" min="50" max="100" value="92" oninput="updateModel()"><span class="pv" id="wNv">92%</span></div>
-      <div class="prow"><span class="plb">D-4~10 (근접)</span><input type="range" class="psl" id="wM" min="30" max="95" value="80" oninput="updateModel()"><span class="pv" id="wMv">80%</span></div>
-      <div class="prow"><span class="plb">D-11 이상 (장기)</span><input type="range" class="psl" id="wF" min="10" max="80" value="55" oninput="updateModel()"><span class="pv" id="wFv">55%</span></div>
-      <div class="note">* 100% = 속도곡선만 사용 / 0% = 요일 벤치마크만 사용<br>* 기본값: 근접 92%, 중기 80%, 장기 55%</div>
+      <div class="mtitle">예측 파라미터 조정</div>
+      <div class="prow"><span class="plb">D-0~3 현재판매 비중</span><input type="range" class="psl" id="wN" min="50" max="100" value="90" oninput="updateModel()"><span class="pv" id="wNv">90%</span></div>
+      <div class="prow"><span class="plb">D-4~7 현재판매 비중</span><input type="range" class="psl" id="wM" min="20" max="80" value="50" oninput="updateModel()"><span class="pv" id="wMv">50%</span></div>
+      <div class="prow"><span class="plb">D-8~14 현재판매 비중</span><input type="range" class="psl" id="wF" min="0" max="50" value="20" oninput="updateModel()"><span class="pv" id="wFv">20%</span></div>
+      <div class="prow"><span class="plb">바이럴/재관람 기대치</span><input type="range" class="psl" id="wViral" min="0" max="30" value="10" oninput="updateModel()"><span class="pv" id="wViralv">10%</span></div>
+      <div class="note">* 현재판매 비중: 높을수록 현재 예매량을 신뢰, 낮을수록 요일 벤치마크를 신뢰<br>* 바이럴/재관람: D-15 이상 공연에 추가 uplift (재관람 15~20% + 소셜 바이럴)</div>
     </div>
     <div class="mc">
       <div class="mtitle">요일별 벤치마크 (1차 109회 기준)</div>
@@ -260,7 +245,7 @@ canvas{max-width:100%}
   </div>
   <div id="daily-table-wrap" class="twrap" style="display:none">
     <table><thead><tr>
-      <th>날짜</th><th>현재 판매</th><th>Vel Implied</th><th>DoW Bench</th><th>예측 최종</th><th>현재 점유율</th><th>예측 점유율</th>
+      <th>날짜</th><th>현재 판매</th><th>DoW Bench</th><th>잔여일</th><th>예측 최종</th><th>현재 점유율</th><th>예측 점유율</th>
     </tr></thead><tbody id="daily-tbody"></tbody></table>
   </div>
 </div>
@@ -365,15 +350,7 @@ const DEFAULT_PAST_DAILY = [
 const DOW_BENCH = {0:0.8713,1:0.7081,2:0.8588,3:0.8631,4:0.9610,5:0.9893,6:0.9951};
 const DOW_STD   = {0:0.1979,1:0.3121,2:0.2633,3:0.2526,4:0.1250,5:0.0247,6:0.0061};
 const DOW_NAMES = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-// VEL_AT_NOW: 2차 예매 오픈(03/11)으로부터 오늘까지 경과일 기준 동적 계산
-function calcVelAtDate(snapDate) {
-  const g2Open = new Date('2026-03-11T10:28:47');
-  const daysSinceOpen = (snapDate - g2Open) / 86400000;
-  // logistic: 1 / (1 + exp(-0.3642 * (d - (-0.1572))))
-  const v = 1 / (1 + Math.exp(-0.3642 * (daysSinceOpen + 0.1572)));
-  return Math.min(Math.max(v, 0.001), 0.9999);
-}
-const VEL_AT_NOW = calcVelAtDate(new Date()); // 오늘 날짜 기준 자동 계산
+// Velocity 모델 제거 — DoW 벤치마크 기반 모델로 전환
 const PAST1_TOTAL = 14362, PAST2_TOTAL = 455, TOTAL_CAP = 49400;
 
 const VEL_1CHA = [{d:0,v:.549},{d:2.1,v:.635},{d:2.9,v:.642},{d:3.9,v:.655},{d:9.8,v:.664},
@@ -564,8 +541,7 @@ function analyzeUploaded() {
       return showDate;
     })] || new Date('2026-03-11');
     const bench = dowBench[d.dow] || DOW_BENCH[d.dow] || 0.85;
-    const velAtSnap = calcVelAtDate(latestDt);
-    const vi = Math.min((d.curSold / d.cap) / velAtSnap, 1.0);
+    const vi = 0; // velocity 모델 제거
     const mm = `${d.date.slice(5,7)}/${d.date.slice(8,10)}(${['월','화','수','목','금','토','일'][d.dow]})`;
     return { date: mm, dow: d.dow, shows: d.shows, curSold: d.curSold, cap: d.cap, daysLeft: d.daysLeft, bench, vi };
   });
@@ -606,23 +582,42 @@ function analyzeUploaded() {
 /* ═══════════════════════════════════════════════════════════════
    PREDICTION ENGINE
 ═══════════════════════════════════════════════════════════════ */
-function predictShow(show, wN, wM, wF) {
-  const co = show.curSold / show.cap;
-  const bench = show.bench;
-  if (co >= bench) return Math.min(co * 1.003, 1.0);
-  const vi = Math.min(show.vi, 1.0);
-  const d = show.daysLeft;
-  const wv = d <= 3 ? wN/100 : d <= 10 ? wM/100 : wF/100;
-  return Math.min(wv * vi + (1 - wv) * bench, bench * 1.01, 1.0);
+function predictShow(show, wNear, wMid, wFar, viralBoost) {
+  const co  = show.curSold / show.cap;
+  const bm  = show.bench;
+  const d   = show.daysLeft;
+
+  // 현재 판매가 이미 벤치마크 이상이면 그대로
+  if (co >= bm) return Math.min(co * 1.003, 1.0);
+
+  let pred;
+  if (d <= 3) {
+    // 러시 거의 완료 — 현재 판매 중심
+    pred = co * (wNear/100) + bm * (1 - wNear/100);
+  } else if (d <= 7) {
+    // 러시 진행 중 — 절충
+    pred = co * (wMid/100) + bm * (1 - wMid/100);
+  } else if (d <= 14) {
+    // 러시 전 — 벤치마크 중심
+    pred = co * (wFar/100) + bm * (1 - wFar/100);
+  } else {
+    // 수요 아직 미발현 — 벤치마크 + 바이럴/재관람 보정
+    const viral = (viralBoost || 0) / 100;
+    pred = bm * (1 + viral);
+  }
+
+  // 예측은 항상 현재 판매 이상, 최대 수용인원 이하
+  return Math.min(Math.max(pred, co), 1.0);
 }
 
 function computePreds() {
-  const wN = +document.getElementById('wN').value;
-  const wM = +document.getElementById('wM').value;
-  const wF = +document.getElementById('wF').value;
+  const wN    = +document.getElementById('wN').value;
+  const wM    = +document.getElementById('wM').value;
+  const wF    = +document.getElementById('wF').value;
+  const viral = +document.getElementById('wViral').value;
   return state.futureShows.map(s => {
-    const po = predictShow(s, wN, wM, wF);
-    const predSold = Math.max(Math.round(po * s.cap), s.curSold); // 항상 현재 판매량 이상
+    const po = predictShow(s, wN, wM, wF, viral);
+    const predSold = Math.max(Math.round(po * s.cap), s.curSold);
     return { ...s, curOcc: s.curSold/s.cap, predOcc: po, predSold, addTickets: predSold - s.curSold };
   });
 }
@@ -965,7 +960,7 @@ function switchDailyTab(tab, btn) {
 }
 
 function updateModel() {
-  ['wN','wM','wF'].forEach(id => document.getElementById(id+'v').textContent = document.getElementById(id).value + '%');
+  ['wN','wM','wF','wViral'].forEach(id => document.getElementById(id+'v').textContent = document.getElementById(id).value + '%');
   const preds = computePreds();
   renderKPIs(preds);
   renderBanner(preds);
