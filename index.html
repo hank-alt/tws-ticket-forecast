@@ -163,7 +163,7 @@ canvas{max-width:100%}
     <div class="uz-sub">TWS_Korea_TicketReservation_YYYYMMDD_HHMMSS_Full.csv · 여러 파일 동시 가능</div>
   </div>
   <div class="uz-files" id="uz-files"></div>
-  <button onclick="clearLocalStorage()" style="
+  <button onclick="clearStorage()" style="
     margin-left:8px;flex-shrink:0;
     font-family:var(--mono);font-size:9px;letter-spacing:1px;
     padding:6px 10px;border-radius:6px;
@@ -365,7 +365,15 @@ const DEFAULT_PAST_DAILY = [
 const DOW_BENCH = {0:0.8713,1:0.7081,2:0.8588,3:0.8631,4:0.9610,5:0.9893,6:0.9951};
 const DOW_STD   = {0:0.1979,1:0.3121,2:0.2633,3:0.2526,4:0.1250,5:0.0247,6:0.0061};
 const DOW_NAMES = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-const VEL_AT_NOW = 0.9204;
+// VEL_AT_NOW: 2차 예매 오픈(03/11)으로부터 오늘까지 경과일 기준 동적 계산
+function calcVelAtDate(snapDate) {
+  const g2Open = new Date('2026-03-11T10:28:47');
+  const daysSinceOpen = (snapDate - g2Open) / 86400000;
+  // logistic: 1 / (1 + exp(-0.3642 * (d - (-0.1572))))
+  const v = 1 / (1 + Math.exp(-0.3642 * (daysSinceOpen + 0.1572)));
+  return Math.min(Math.max(v, 0.001), 0.9999);
+}
+const VEL_AT_NOW = calcVelAtDate(new Date()); // 오늘 날짜 기준 자동 계산
 const PAST1_TOTAL = 14362, PAST2_TOTAL = 455, TOTAL_CAP = 49400;
 
 const VEL_1CHA = [{d:0,v:.549},{d:2.1,v:.635},{d:2.9,v:.642},{d:3.9,v:.655},{d:9.8,v:.664},
@@ -382,19 +390,25 @@ const STORAGE_KEY = 'tws_forecast_snapshots_v1';
 
 function saveToStorage(uploadedSnaps) {
   try {
-    // 스냅샷 메타데이터만 저장 (rows 제외 — 용량 절약)
+    // rows 전체 저장 (누적 분석에 필요)
     const toSave = uploadedSnaps.map(s => ({
       name: s.name,
       key: s.key,
       dt: s.dt.toISOString(),
-      total: s.rows ? s.rows.reduce((sum, r) => sum + (parseInt(r['# of Tickets Sold']) || 0), 0) : 0,
-      // 최신 스냅샷 rows만 저장 (예측용)
-      rows: s === uploadedSnaps[uploadedSnaps.length - 1] ? s.rows : null
+      rows: s.rows || []
     }));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-    console.log(`💾 Saved ${toSave.length} snapshots to localStorage`);
+    console.log(\`💾 저장 완료: \${toSave.length}개 스냅샷 (브라우저에 누적 보관)\`);
   } catch(e) {
-    console.warn('localStorage save failed:', e);
+    // 용량 초과 시 최근 20개만 저장
+    try {
+      const recent = uploadedSnaps.slice(-20);
+      const toSave = recent.map(s => ({ name: s.name, key: s.key, dt: s.dt.toISOString(), rows: s.rows || [] }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+      console.warn(\`⚠️ 용량 초과로 최근 20개만 저장\`);
+    } catch(e2) {
+      console.warn('localStorage 저장 실패:', e2);
+    }
   }
 }
 
@@ -466,7 +480,6 @@ function handleFiles(files) {
     state.uploadedFiles = [...state.uploadedFiles, ...valid]
       .sort((a,b) => a.dt - b.dt)
       .filter((v,i,arr) => arr.findIndex(x => x.dt.getTime() === v.dt.getTime()) === i);
-    saveToLocalStorage();
     analyzeUploaded();
   });
 }
@@ -474,52 +487,6 @@ function handleFiles(files) {
 /* ═══════════════════════════════════════════════════════════════
    LOCAL STORAGE — 브라우저에 누적 저장 (새로고침해도 유지)
 ═══════════════════════════════════════════════════════════════ */
-const LS_KEY = 'tws_forecast_snapshots_v1';
-
-function saveToLocalStorage() {
-  try {
-    const toSave = state.uploadedFiles.map(f => ({
-      name: f.name,
-      dt: f.dt.toISOString(),
-      rows: f.rows
-    }));
-    localStorage.setItem(LS_KEY, JSON.stringify(toSave));
-    console.log(`💾 저장 완료: ${toSave.length}개 스냅샷`);
-  } catch(e) {
-    console.warn('localStorage 저장 실패:', e);
-  }
-}
-
-function loadFromLocalStorage() {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return false;
-    const saved = JSON.parse(raw);
-    if (!saved || !saved.length) return false;
-    state.uploadedFiles = saved
-      .filter(f => f && f.rows && Array.isArray(f.rows) && f.rows.length > 0)
-      .map(f => ({
-        name: f.name,
-        dt: new Date(f.dt),
-        rows: f.rows
-      }));
-    console.log(`📂 불러오기 완료: ${saved.length}개 스냅샷`);
-    return true;
-  } catch(e) {
-    console.warn('localStorage 불러오기 실패:', e);
-    return false;
-  }
-}
-
-function clearLocalStorage() {
-  localStorage.removeItem(LS_KEY);
-  state.uploadedFiles = [];
-  state.useUploaded = false;
-  renderAll();
-  document.getElementById('uz-files').innerHTML = '';
-  document.getElementById('snap-status').textContent = '● 기본 데이터 20개 스냅샷';
-  alert('저장된 데이터가 초기화되었습니다.');
-}
 
 function analyzeUploaded() {
   const allSnaps = state.uploadedFiles;
@@ -597,7 +564,8 @@ function analyzeUploaded() {
       return showDate;
     })] || new Date('2026-03-11');
     const bench = dowBench[d.dow] || DOW_BENCH[d.dow] || 0.85;
-    const vi = Math.min((d.curSold / d.cap) / VEL_AT_NOW, 1.0);
+    const velAtSnap = calcVelAtDate(latestDt);
+    const vi = Math.min((d.curSold / d.cap) / velAtSnap, 1.0);
     const mm = `${d.date.slice(5,7)}/${d.date.slice(8,10)}(${['월','화','수','목','금','토','일'][d.dow]})`;
     return { date: mm, dow: d.dow, shows: d.shows, curSold: d.curSold, cap: d.cap, daysLeft: d.daysLeft, bench, vi };
   });
@@ -622,11 +590,14 @@ function analyzeUploaded() {
   // localStorage에 누적 저장
   saveToStorage(state.uploadedFiles);
 
+  // 브라우저에 누적 저장
+  saveToStorage(state.uploadedFiles);
+
   // Update file tags
   const uzFiles = document.getElementById('uz-files');
   uzFiles.innerHTML = allSnaps.map(s => `<div class="uz-file-tag">+${s.name.match(/\d{8}_\d{6}/)?.[0] || s.name}</div>`).join('');
   const latestSnapLabel = allSnaps[allSnaps.length-1]?.dt?.toLocaleString('ko-KR', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) || '';
-  document.getElementById('snap-status').textContent = `● ${mergedSnapshots.length}개 스냅샷 (누적 저장됨)`;
+  document.getElementById('snap-status').textContent = `● ${mergedSnapshots.length}개 스냅샷 (누적 저장 ✓)`;
   document.getElementById('snap-count-sub').textContent = `기본 ${DEFAULT_SNAPSHOTS.length}개 + 추가 ${newSnapPoints.length}개 = 총 ${mergedSnapshots.length}개 · 브라우저에 저장됨 (새로고침해도 유지)`;
 
   renderAll();
@@ -651,7 +622,7 @@ function computePreds() {
   const wF = +document.getElementById('wF').value;
   return state.futureShows.map(s => {
     const po = predictShow(s, wN, wM, wF);
-    const predSold = Math.round(po * s.cap);
+    const predSold = Math.max(Math.round(po * s.cap), s.curSold); // 항상 현재 판매량 이상
     return { ...s, curOcc: s.curSold/s.cap, predOcc: po, predSold, addTickets: predSold - s.curSold };
   });
 }
@@ -700,7 +671,11 @@ function occColor(v) {
 
 function renderKPIs(preds) {
   const futTotal = preds.reduce((s,p) => s + p.predSold, 0);
-  const grand = PAST1_TOTAL + PAST2_TOTAL + futTotal;
+  // 과거 판매 합계: 업로드된 CSV 기준으로 동적 계산, 없으면 기본값
+  const pastSoldActual = state.pastDaily.length > 0
+    ? state.pastDaily.reduce((s,d) => s + (d.sold||0), 0)
+    : (PAST1_TOTAL + PAST2_TOTAL);
+  const grand = pastSoldActual + futTotal;
   const occ = ((grand / TOTAL_CAP) * 100).toFixed(1);
   const current = state.snapshots[state.snapshots.length - 1]?.total || 28350;
   const curOcc = ((current / TOTAL_CAP) * 100).toFixed(1);
@@ -717,7 +692,10 @@ function renderKPIs(preds) {
 
 function renderBanner(preds) {
   const futTotal = preds.reduce((s,p) => s + p.predSold, 0);
-  const grand = PAST1_TOTAL + PAST2_TOTAL + futTotal;
+  const pastSoldActual2 = state.pastDaily.length > 0
+    ? state.pastDaily.reduce((s,d) => s + (d.sold||0), 0)
+    : (PAST1_TOTAL + PAST2_TOTAL);
+  const grand = pastSoldActual2 + futTotal;
   const occ = ((grand / TOTAL_CAP) * 100).toFixed(1);
   document.getElementById('pban').innerHTML = `
     <div class="pban">
@@ -1297,8 +1275,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   await tryLoadDataJson();
 
   // 2. localStorage에서 누적 데이터 불러오기
-  const hasLocal = loadFromLocalStorage();
-  if (hasLocal) {
+  // localStorage에서 누적 저장된 스냅샷 불러오기
+  const savedSnaps = loadFromStorage();
+  if (savedSnaps && savedSnaps.length > 0) {
+    state.uploadedFiles = savedSnaps;
+    console.log(\`📂 \${savedSnaps.length}개 스냅샷 복원\`);
     analyzeUploaded();
   } else {
     renderAll();
