@@ -874,6 +874,8 @@ function renderSnapChart() {
 }
 
 function renderVelocityCharts() {
+  // velocity 차트 캔버스가 없으면 skip
+  if (!document.getElementById('vel1Chart') || !document.getElementById('vel2Chart')) return;
   if (charts.vel1) charts.vel1.destroy();
   if (charts.vel2) charts.vel2.destroy();
 
@@ -1010,7 +1012,7 @@ function renderAll() {
   renderBanner(preds);
   renderBenchmarks();
   renderSnapChart();
-  renderVelocityCharts();
+  if (document.getElementById('vel1Chart')) renderVelocityCharts();
   renderDailyChart(preds);
   renderTable(preds);
   renderProbSection(preds);
