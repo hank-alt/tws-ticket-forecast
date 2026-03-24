@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TWS Korea · Ticket Forecast (Live)</title>
+<title>TWS Korea · Ticket Forecast v3</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <style>
@@ -146,10 +146,10 @@ canvas{max-width:100%}
 
 <!-- HERO -->
 <div class="hero">
-  <div class="htag">TWS Korea Fan Concert · Ticket Forecast Model v2</div>
+  <div class="htag">TWS Korea Fan Concert · Ticket Forecast Model v3</div>
   <div class="htitle">TICKET <span>SALES</span> FORECAST</div>
   <div class="hsub">
-    <span>코엑스 아티움 · 2026.03.04 – 04.12</span>
+    <span>메가박스 코엑스 · 2026.03.04 – 04.12</span>
     <span id="snap-status" class="hbadge">● 기본 데이터 20개 스냅샷</span>
   </div>
 </div>
@@ -275,9 +275,9 @@ canvas{max-width:100%}
 </div>
 <div class="foot">
   <div class="note">
-    ⚠️ 모델 v2: 로지스틱 속도 곡선 기반 · 2차 예매 7일 관측값 사용 · 주요 불확실성: 4/1-4/12 원거리 공연 판매 궤적<br>
-    📌 권장 업데이트: 03/22(일) → 03/26(목) → 03/29(일) 순으로 스냅샷 추가 시 정확도 향상<br>
-    📁 공유 방법: 이 HTML 파일을 그대로 전송 — 브라우저에서 열면 CSV 업로드 후 자동 분석 실행
+    ⚠️ 모델 v3: 요일별 벤치마크 + 임박도 혼합 모델 · v2 대비 예측 정확도 향상<br>
+    📌 예측 구조: D-3이내=현재판매 중심 / D-4~14=점진적 벤치마크 전환 / D-15+=요일벤치마크+바이럴보정<br>
+    📌 주요 불확실성: 4월 공연 수요 발현 시점 및 바이럴/재관람 강도 · CSV 업로드 시 자동 갱신
   </div>
 </div>
 
@@ -573,8 +573,8 @@ function analyzeUploaded() {
   const uzFiles = document.getElementById('uz-files');
   uzFiles.innerHTML = allSnaps.map(s => `<div class="uz-file-tag">+${s.name.match(/\d{8}_\d{6}/)?.[0] || s.name}</div>`).join('');
   const latestSnapLabel = allSnaps[allSnaps.length-1]?.dt?.toLocaleString('ko-KR', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) || '';
-  document.getElementById('snap-status').textContent = `● ${mergedSnapshots.length}개 스냅샷 (누적 저장 ✓)`;
-  document.getElementById('snap-count-sub').textContent = `기본 ${DEFAULT_SNAPSHOTS.length}개 + 추가 ${newSnapPoints.length}개 = 총 ${mergedSnapshots.length}개 · 브라우저에 저장됨 (새로고침해도 유지)`;
+  document.getElementById('snap-status').textContent = `● ${state.uploadedFiles.length + DEFAULT_SNAPSHOTS.length}개 스냅샷 (누적 저장 ✓)`;
+  document.getElementById('snap-count-sub').textContent = `기본 ${DEFAULT_SNAPSHOTS.length}개 + 업로드 ${state.uploadedFiles.length}개 · 브라우저 누적 저장 (새로고침해도 유지)`;
 
   renderAll();
 }
@@ -645,7 +645,7 @@ function computeScenarios(basePreds) {
     { name:"최악", pct:-25, prob:0.05, color:"#f87171", desc:"4월 원거리 공연 현저히 부진" },
     { name:"비관", pct:-13, prob:0.10, color:"#fb923c", desc:"4월 공연 벤치마크 65% 수준" },
     { name:"보수", pct:-7,  prob:0.18, color:"#fbbf24", desc:"4월 공연 벤치마크 75% 수준" },
-    { name:"기본", pct:0,   prob:0.29, color:"#ffb932", desc:"현재 모델 그대로 (속도 곡선)" },
+    { name:"기본", pct:0,   prob:0.29, color:"#ffb932", desc:"요일 벤치마크 기준 예측" },
     { name:"낙관", pct:+6,  prob:0.21, color:"#86efac", desc:"4월 공연 판매 가속 (+15%)" },
     { name:"강세", pct:+12, prob:0.11, color:"#4ade80", desc:"대부분 공연 벤치마크 근접" },
     { name:"최강", pct:+22, prob:0.06, color:"#22d3ee", desc:"전 공연 거의 완판 수준" },
@@ -679,7 +679,7 @@ function renderKPIs(preds) {
     {cls:'kc',lb:'현재 판매량',val:current.toLocaleString(),note:`최신 스냅샷 기준`},
     {cls:'kc',lb:'현재 점유율',val:curOcc+'%',note:`${TOTAL_CAP.toLocaleString()}석 대비`},
     {cls:'kc gold',lb:'🎯 최종 예측 판매',val:grand.toLocaleString(),note:`추가 예상 +${(grand-current).toLocaleString()}장`},
-    {cls:'kc gold',lb:'예측 최종 점유율',val:occ+'%',note:'로지스틱 속도 모델'},
+    {cls:'kc gold',lb:'예측 최종 점유율',val:occ+'%',note:'요일 벤치마크 + 임박도 혼합'},
     {cls:'kc green',lb:'추가 예상 판매',val:(grand-current).toLocaleString(),note:'지금부터 4/12까지'},
     {cls:'kc',lb:'스냅샷 수',val:state.snapshots.length.toString(),note:state.useUploaded?'업로드 데이터':'기본 내장 데이터'},
   ].map(k => `<div class="${k.cls}"><div class="kbar"></div><div class="klb">${k.lb}</div><div class="kv">${k.val}</div><div class="kn">${k.note}</div></div>`).join('');
@@ -738,7 +738,7 @@ function renderProbSection(preds) {
 
   document.getElementById('prob-note').innerHTML = `
     * 핵심 불확실성: 4/1~4/12 원거리 공연 (현재 1~18% 점유 → 모델 예측 40~96%)<br>
-    * 기본 시나리오(29%): 로지스틱 속도 곡선 그대로 적용<br>
+    * 기본 시나리오(29%): 요일 벤치마크 + 임박도 혼합 적용<br>
     * 낙관 이상(38%): 4월 판매 가속 또는 SNS 바이럴 발생 시`;
 
   // Cumulative prob chart
