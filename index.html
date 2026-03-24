@@ -528,7 +528,7 @@ function analyzeUploaded() {
       if (!pastMap[key]) pastMap[key] = { date: key, sold: 0, cap: 0, dow: r.dow };
       pastMap[key].sold += r.sold; pastMap[key].cap += r.seats;
     } else {
-      if (!futMap[key]) futMap[key] = { date: key, dow: r.dow, curSold: 0, cap: 0, shows: 0, daysLeft: Math.round((r.showDt - cutoff2) / 86400000) };
+      if (!futMap[key]) futMap[key] = { date: key, dow: r.dow, curSold: 0, cap: 0, shows: 0, daysLeft: Math.round((r.showDt - new Date().setHours(0,0,0,0)) / 86400000) };
       futMap[key].curSold += r.sold; futMap[key].cap += r.seats; futMap[key].shows++;
     }
   });
@@ -539,14 +539,9 @@ function analyzeUploaded() {
   }));
 
   const futureShows = Object.values(futMap).sort((a,b) => a.date.localeCompare(b.date)).map(d => {
-    const bk = bookingOpen[Object.keys(bookingOpen).find(k => {
-      const showDate = allRows.find(r => r.showKey === k && Math.abs(r.showDt - new Date(d.date)) < 1000);
-      return showDate;
-    })] || new Date('2026-03-11');
-    const bench = dowBench[d.dow] || DOW_BENCH[d.dow] || 0.85;
-    const vi = 0; // velocity 모델 제거
+    const bench = dowBench[d.dow] !== undefined ? dowBench[d.dow] : (DOW_BENCH[d.dow] || 0.85);
     const mm = `${d.date.slice(5,7)}/${d.date.slice(8,10)}(${['월','화','수','목','금','토','일'][d.dow]})`;
-    return { date: mm, dow: d.dow, shows: d.shows, curSold: d.curSold, cap: d.cap, daysLeft: d.daysLeft, bench, vi };
+    return { date: mm, dow: d.dow, shows: d.shows, curSold: d.curSold, cap: d.cap, daysLeft: d.daysLeft, bench, vi: 0 };
   });
 
   // ── 핵심 변경: 기존 누적 스냅샷 보존 + 새 데이터로 예측만 갱신 ──────────────
@@ -565,9 +560,6 @@ function analyzeUploaded() {
   // 3. 과거 일별: 새 CSV에 있으면 갱신, 없으면 기존 유지
   state.pastDaily = pastDaily.length > 0 ? pastDaily : state.pastDaily;
   state.useUploaded = true;
-
-  // localStorage에 누적 저장
-  saveToStorage(state.uploadedFiles);
 
   // 브라우저에 누적 저장
   saveToStorage(state.uploadedFiles);
