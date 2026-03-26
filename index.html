@@ -792,15 +792,17 @@ function renderSnapChart() {
   if (charts.snapChart) charts.snapChart.destroy();
   const snaps = state.snapshots;
 
-  // x축: 날짜만 표시 (시간 제거) - "MM/DD HH:mm" → "MM/DD"로 통일
-  // 같은 날짜가 여러 개 있을 때는 날짜+순번으로 구분
-  const dateCount = {};
-  const xLabels = snaps.map(s => {
+  // x축: 날짜만 표시 — "MM/DD HH:mm" 또는 "YYYY-MM-DD HH:mm" 둘 다 처리
+  function snapToMD(s) {
     const raw = s.dt ? s.dt : (s.label || '');
-    const dateOnly = raw.slice(0, 5); // "MM/DD"
-    dateCount[dateOnly] = (dateCount[dateOnly] || 0) + 1;
-    return dateOnly;
-  });
+    if (raw.match(/^\d{4}-/)) {
+      // "2026-03-24 19:29" → "03/24"
+      return raw.slice(5, 10).replace('-', '/');
+    }
+    // "03/24 19:29" → "03/24"
+    return raw.slice(0, 5);
+  }
+  const xLabels = snaps.map(snapToMD);
 
   // 같은 날짜 중 첫번째만 레이블 표시, 나머지는 빈칸
   const seenDates = {};
@@ -874,7 +876,8 @@ function renderSnapChart() {
           callbacks: {
             title: items => {
               const snap = snaps[items[0].dataIndex];
-              return snap.dt || snap.label || '';
+              const raw = snap.dt || snap.label || '';
+              return raw; // 전체 날짜+시간 표시
             },
             label: i => i.raw.toLocaleString() + '장'
           }
