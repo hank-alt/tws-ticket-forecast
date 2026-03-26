@@ -791,32 +791,94 @@ function renderProbSection(preds) {
 function renderSnapChart() {
   if (charts.snapChart) charts.snapChart.destroy();
   const snaps = state.snapshots;
+
+  // x축: 날짜만 표시 (시간 제거) - "MM/DD HH:mm" → "MM/DD"로 통일
+  // 같은 날짜가 여러 개 있을 때는 날짜+순번으로 구분
+  const dateCount = {};
+  const xLabels = snaps.map(s => {
+    const raw = s.dt ? s.dt : (s.label || '');
+    const dateOnly = raw.slice(0, 5); // "MM/DD"
+    dateCount[dateOnly] = (dateCount[dateOnly] || 0) + 1;
+    return dateOnly;
+  });
+
+  // 같은 날짜 중 첫번째만 레이블 표시, 나머지는 빈칸
+  const seenDates = {};
+  const tickLabels = xLabels.map(d => {
+    if (seenDates[d]) return '';
+    seenDates[d] = true;
+    return d;
+  });
+
+  // 데이터가 있는 시점만 dot 표시 (radius > 0), 나머지는 0
+  // 같은 날짜 첫번째 스냅샷만 dot, 나머지 같은날 스냅샷은 작게
+  const seenDates2 = {};
+  const dotRadius = snaps.map((s, i) => {
+    const d = xLabels[i];
+    if (!seenDates2[d]) { seenDates2[d] = true; return s.isNew ? 6 : 4; }
+    return 2; // 같은날 2번째 이후는 작은 dot
+  });
+
   charts.snapChart = new Chart(document.getElementById('snapChart'), {
     type: 'line',
     data: {
-      labels: snaps.map(s => s.dt ? s.dt.slice(5,11) : s.label || ''),
+      labels: tickLabels,
       datasets: [{
         label: '누적 판매량',
         data: snaps.map(s => s.total),
-        borderColor: '#ffb932', borderWidth: 2,
+        borderColor: '#ffb932',
+        borderWidth: 2,
         backgroundColor: 'rgba(255,185,50,0.07)',
-        fill: true, tension: 0.2,
+        fill: true,
+        tension: 0.3,
         pointBackgroundColor: snaps.map(s => s.isNew ? '#4ade80' : '#ffb932'),
-        pointRadius: snaps.map(s => s.isNew ? 6 : 4),
+        pointBorderColor: snaps.map(s => s.isNew ? 'rgba(74,222,128,0.4)' : 'transparent'),
+        pointBorderWidth: snaps.map(s => s.isNew ? 3 : 0),
+        pointRadius: dotRadius,
         pointHoverRadius: 7,
+        spanGaps: true,
       }]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
       scales: {
-        x: { ticks: { color: 'rgba(229,224,216,0.3)', font: { family: 'DM Mono', size: 9 }, maxRotation: 45 }, grid: { color: 'rgba(255,255,255,0.04)' } },
-        y: { ticks: { color: 'rgba(229,224,216,0.3)', font: { family: 'DM Mono', size: 9 }, callback: v => (v/1000).toFixed(0)+'k' }, grid: { color: 'rgba(255,255,255,0.04)' } }
+        x: {
+          ticks: {
+            color: 'rgba(229,224,216,0.35)',
+            font: { family: 'DM Mono', size: 9 },
+            maxRotation: 45,
+            autoSkip: false,
+            // 빈 레이블은 그냥 공백 처리
+            callback: function(val, idx) { return this.getLabelForValue(val) || ''; }
+          },
+          grid: { color: 'rgba(255,255,255,0.04)' }
+        },
+        y: {
+          ticks: {
+            color: 'rgba(229,224,216,0.3)',
+            font: { family: 'DM Mono', size: 9 },
+            callback: v => (v/1000).toFixed(0)+'k'
+          },
+          grid: { color: 'rgba(255,255,255,0.04)' }
+        }
       },
       plugins: {
         legend: { display: false },
-        tooltip: { backgroundColor: '#181b28', borderColor: 'rgba(255,185,50,0.2)', borderWidth: 1,
-          titleColor: '#ffb932', titleFont: { family: 'DM Mono', size: 10 }, bodyColor: '#e5e0d8',
-          callbacks: { label: i => i.raw.toLocaleString() + '장' } }
+        tooltip: {
+          backgroundColor: '#181b28',
+          borderColor: 'rgba(255,185,50,0.2)',
+          borderWidth: 1,
+          titleColor: '#ffb932',
+          titleFont: { family: 'DM Mono', size: 10 },
+          bodyColor: '#e5e0d8',
+          callbacks: {
+            title: items => {
+              const snap = snaps[items[0].dataIndex];
+              return snap.dt || snap.label || '';
+            },
+            label: i => i.raw.toLocaleString() + '장'
+          }
+        }
       }
     }
   });
