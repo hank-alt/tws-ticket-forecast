@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TWS Korea · Ticket Forecast v3</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
@@ -792,53 +793,34 @@ function renderSnapChart() {
   if (charts.snapChart) charts.snapChart.destroy();
   const snaps = state.snapshots;
 
-  // x축: 날짜만 표시 — "MM/DD HH:mm" 또는 "YYYY-MM-DD HH:mm" 둘 다 처리
-  function snapToMD(s) {
-    const raw = s.dt ? s.dt : (s.label || '');
-    if (raw.match(/^\d{4}-/)) {
-      // "2026-03-24 19:29" → "03/24"
-      return raw.slice(5, 10).replace('-', '/');
-    }
-    // "03/24 19:29" → "03/24"
-    return raw.slice(0, 5);
+  // 날짜 문자열 → "MM/DD" 추출 (두 포맷 모두 처리)
+  function toMD(s) {
+    const raw = s.dt || s.label || '';
+    if (raw.match(/^\d{4}-/)) return raw.slice(5,10).replace('-','/'); // "2026-03-24 ..." → "03/24"
+    return raw.slice(0,5); // "03/24 ..." → "03/24"
   }
-  const xLabels = snaps.map(snapToMD);
 
-  // 같은 날짜 중 첫번째만 레이블 표시, 나머지는 빈칸
-  const seenDates = {};
-  const tickLabels = xLabels.map(d => {
-    if (seenDates[d]) return '';
-    seenDates[d] = true;
-    return d;
-  });
-
-  // 데이터가 있는 시점만 dot 표시 (radius > 0), 나머지는 0
-  // 같은 날짜 첫번째 스냅샷만 dot, 나머지 같은날 스냅샷은 작게
-  const seenDates2 = {};
-  const dotRadius = snaps.map((s, i) => {
-    const d = xLabels[i];
-    if (!seenDates2[d]) { seenDates2[d] = true; return s.isNew ? 6 : 4; }
-    return 2; // 같은날 2번째 이후는 작은 dot
+  // 날짜별로 마지막 값만 남기기 (같은 날 여러 스냅샷 → 최신값 1개)
+  const seen = {}, daily = [];
+  [...snaps].reverse().forEach(s => {
+    const md = toMD(s);
+    if (!seen[md]) { seen[md] = true; daily.unshift({md, total: s.total, isNew: s.isNew, raw: s.dt || s.label || ''}); }
   });
 
   charts.snapChart = new Chart(document.getElementById('snapChart'), {
     type: 'line',
     data: {
-      labels: tickLabels,
+      labels: daily.map(d => d.md),
       datasets: [{
         label: '누적 판매량',
-        data: snaps.map(s => s.total),
-        borderColor: '#ffb932',
-        borderWidth: 2,
+        data: daily.map(d => d.total),
+        borderColor: '#ffb932', borderWidth: 2,
         backgroundColor: 'rgba(255,185,50,0.07)',
-        fill: true,
-        tension: 0.3,
-        pointBackgroundColor: snaps.map(s => s.isNew ? '#4ade80' : '#ffb932'),
-        pointBorderColor: snaps.map(s => s.isNew ? 'rgba(74,222,128,0.4)' : 'transparent'),
-        pointBorderWidth: snaps.map(s => s.isNew ? 3 : 0),
-        pointRadius: dotRadius,
-        pointHoverRadius: 7,
-        spanGaps: true,
+        fill: true, tension: 0.3,
+        pointBackgroundColor: daily.map(d => d.isNew ? '#4ade80' : '#ffb932'),
+        pointBorderColor: daily.map(d => d.isNew ? 'rgba(74,222,128,0.4)' : 'transparent'),
+        pointBorderWidth: daily.map(d => d.isNew ? 3 : 0),
+        pointRadius: 4, pointHoverRadius: 7,
       }]
     },
     options: {
@@ -848,37 +830,22 @@ function renderSnapChart() {
           ticks: {
             color: 'rgba(229,224,216,0.35)',
             font: { family: 'DM Mono', size: 9 },
-            maxRotation: 45,
-            autoSkip: false,
-            // 빈 레이블은 그냥 공백 처리
-            callback: function(val, idx) { return this.getLabelForValue(val) || ''; }
+            maxRotation: 45, autoSkip: true, maxTicksLimit: 16,
           },
           grid: { color: 'rgba(255,255,255,0.04)' }
         },
         y: {
-          ticks: {
-            color: 'rgba(229,224,216,0.3)',
-            font: { family: 'DM Mono', size: 9 },
-            callback: v => (v/1000).toFixed(0)+'k'
-          },
+          ticks: { color: 'rgba(229,224,216,0.3)', font: { family: 'DM Mono', size: 9 }, callback: v => (v/1000).toFixed(0)+'k' },
           grid: { color: 'rgba(255,255,255,0.04)' }
         }
       },
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: '#181b28',
-          borderColor: 'rgba(255,185,50,0.2)',
-          borderWidth: 1,
-          titleColor: '#ffb932',
-          titleFont: { family: 'DM Mono', size: 10 },
-          bodyColor: '#e5e0d8',
+          backgroundColor: '#181b28', borderColor: 'rgba(255,185,50,0.2)', borderWidth: 1,
+          titleColor: '#ffb932', titleFont: { family: 'DM Mono', size: 10 }, bodyColor: '#e5e0d8',
           callbacks: {
-            title: items => {
-              const snap = snaps[items[0].dataIndex];
-              const raw = snap.dt || snap.label || '';
-              return raw; // 전체 날짜+시간 표시
-            },
+            title: items => daily[items[0].dataIndex]?.md || '',
             label: i => i.raw.toLocaleString() + '장'
           }
         }
@@ -886,7 +853,6 @@ function renderSnapChart() {
     }
   });
 }
-
 function renderVelocityCharts() {
   // velocity 차트 캔버스가 없으면 skip
   if (!document.getElementById('vel1Chart') || !document.getElementById('vel2Chart')) return;
