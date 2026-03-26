@@ -585,48 +585,58 @@ function computePreds() {
 }
 
 function computeScenarios(basePreds) {
-  const wN    = +document.getElementById('wN').value;
-  const wM    = +document.getElementById('wM').value;
-  const wF    = +document.getElementById('wF').value;
-  const viral = +document.getElementById('wViral').value;
+  const wN = +document.getElementById('wN').value;
+  const wM = +document.getElementById('wM').value;
+  const wF = +document.getElementById('wF').value;
 
-  // 과거 확정 판매
   const pastSold = state.pastDaily.length > 0
     ? state.pastDaily.reduce((s,d) => s + (d.sold||0), 0)
     : (PAST1_TOTAL + PAST2_TOTAL);
 
-  // 근접 공연 (D-14 이내): 이미 러시 진행 중 → 불확실성 낮음
+  // 근접(D<14): 기본 예측값 고정
   const nearShows = state.futureShows.filter(s => s.daysLeft < 14);
-  const nearTotal = nearShows.reduce((s,sh) => s + Math.max(Math.round(predictShow(sh,wN,wM,wF,viral)*sh.cap), sh.curSold), 0);
+  const nearTotal = nearShows.reduce((s,sh) => s + Math.max(Math.round(predictShow(sh,wN,wM,wF,10)*sh.cap), sh.curSold), 0);
 
-  // 원거리 공연 (D-14 이상): 수요 미발현 → 불확실성 높음
+  // 원거리(D>=14): 주요 불확실성 — 평일 decay + 바이럴 강도
   const farShows = state.futureShows.filter(s => s.daysLeft >= 14);
+  const OPENING = new Date('2026-03-04');
+  const WE_BENCH_VAL = 0.992;
+  const DECAY = {1:1.00,2:0.85,3:0.75,4:0.65,5:0.55,6:0.45};
 
-  // 시나리오별로 원거리 공연에 다른 바이럴 강도 적용
+  function calcFarTotal(viralPct, wkdAdj) {
+    return farShows.reduce((s, sh) => {
+      const co = sh.curSold / sh.cap;
+      const isWE = [4,5,6].includes(sh.dow);
+      let bm = sh.bench;
+      if (!isWE) {
+        const today = new Date();
+        const showDate = new Date(today.getTime() + sh.daysLeft * 86400000);
+        const week = Math.min(Math.floor((showDate - OPENING) / (7*86400000)) + 1, 6);
+        bm = bm * (DECAY[week] || 0.45);
+      }
+      bm = Math.min(bm + wkdAdj, 1.0);
+      const boost = isWE ? 0 : (WE_BENCH_VAL - bm) * (viralPct / 100);
+      const pred = Math.min(Math.max(bm + boost, co), 1.0);
+      return s + Math.max(Math.round(pred * sh.cap), sh.curSold);
+    }, 0);
+  }
+
   const scenarios = [
-    { name:"최악",  viral:0,   wkdAdj:-0.15, prob:0.05, color:"#f87171", desc:"바이럴 없음 + 평일 수요 부진" },
-    { name:"비관",  viral:0,   wkdAdj:-0.05, prob:0.10, color:"#fb923c", desc:"바이럴 없음, 벤치마크 소폭 하회" },
-    { name:"보수",  viral:5,   wkdAdj:0,     prob:0.18, color:"#fbbf24", desc:"소폭 바이럴, 벤치마크 수준" },
-    { name:"기본",  viral:viral,wkdAdj:0,    prob:0.27, color:"#ffb932", desc:"현재 슬라이더 설정값 그대로" },
-    { name:"낙관",  viral:15,  wkdAdj:0,     prob:0.22, color:"#86efac", desc:"재관람 15% + 소셜 바이럴" },
-    { name:"강세",  viral:25,  wkdAdj:0,     prob:0.12, color:"#4ade80", desc:"재관람 20% + 강한 바이럴" },
-    { name:"최강",  viral:40,  wkdAdj:0.05,  prob:0.06, color:"#22d3ee", desc:"전 공연 거의 완판, 연장 고려" },
+    { name:"최악",  viral:0,  wkdAdj:-0.20, prob:0.05, color:"#f87171", desc:"평일 급감 + 바이럴 없음" },
+    { name:"비관",  viral:0,  wkdAdj:-0.10, prob:0.10, color:"#fb923c", desc:"평일 약세, 바이럴 없음" },
+    { name:"보수",  viral:5,  wkdAdj:-0.05, prob:0.18, color:"#fbbf24", desc:"소폭 바이럴, decay 유지" },
+    { name:"기본",  viral:10, wkdAdj:0,     prob:0.27, color:"#ffb932", desc:"현재 슬라이더 기준" },
+    { name:"낙관",  viral:20, wkdAdj:0,     prob:0.22, color:"#86efac", desc:"재관람 15%+ 발생" },
+    { name:"강세",  viral:30, wkdAdj:0.05,  prob:0.12, color:"#4ade80", desc:"강한 바이럴 + 평일 상향" },
+    { name:"최강",  viral:50, wkdAdj:0.10,  prob:0.06, color:"#22d3ee", desc:"전 공연 최대 수요" },
   ];
 
-  return scenarios.map(sc => {
-    const farTotal = farShows.reduce((s, sh) => {
-      // 요일별 조정 벤치마크
-      const adjBench = Math.min(sh.bench + sc.wkdAdj, 1.0);
-      const adjShow = { ...sh, bench: adjBench };
-      const po = predictShow(adjShow, wN, wM, wF, sc.viral);
-      return s + Math.max(Math.round(po * sh.cap), sh.curSold);
-    }, 0);
-    return {
-      ...sc,
-      total: pastSold + nearTotal + farTotal,
-    };
-  });
+  return scenarios.map(sc => ({
+    ...sc,
+    total: pastSold + nearTotal + calcFarTotal(sc.viral, sc.wkdAdj),
+  }));
 }
+
 
 /* ═══════════════════════════════════════════════════════════════
    RENDER FUNCTIONS
@@ -762,8 +772,11 @@ function renderProbSection(preds) {
     options: {
       responsive: true, maintainAspectRatio: false,
       scales: {
-        x: { type: 'linear', title: { display: true, text: '최종 판매량', color: 'rgba(229,224,216,0.3)', font: { family: 'DM Mono', size: 10 } },
-          ticks: { color: 'rgba(229,224,216,0.35)', font: { family: 'DM Mono', size: 9 }, callback: v => (v/1000).toFixed(0)+'k' },
+        x: { type: 'linear',
+          min: Math.floor((cumData[0].x - (cumData[cumData.length-1].x - cumData[0].x)*0.3) / 1000) * 1000,
+          max: Math.ceil((cumData[cumData.length-1].x + (cumData[cumData.length-1].x - cumData[0].x)*0.3) / 1000) * 1000,
+          title: { display: true, text: '최종 판매량', color: 'rgba(229,224,216,0.3)', font: { family: 'DM Mono', size: 10 } },
+          ticks: { color: 'rgba(229,224,216,0.35)', font: { family: 'DM Mono', size: 9 }, callback: v => (v/1000).toFixed(1)+'k' },
           grid: { color: 'rgba(255,255,255,0.04)' } },
         y: { title: { display: true, text: '누적 확률 (%)', color: 'rgba(229,224,216,0.3)', font: { family: 'DM Mono', size: 10 } },
           min: 0, max: 100,
